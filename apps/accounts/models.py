@@ -9,6 +9,7 @@ import uuid
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models.functions import Lower
 
 from .managers import CustomUserManager
 
@@ -86,6 +87,13 @@ class User(AbstractUser):
         verbose_name = "user"
         verbose_name_plural = "users"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(Lower("email"), name="unique_user_email_ci"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.lower()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.email
