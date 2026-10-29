@@ -21,13 +21,17 @@ class CustomUserManager(BaseUserManager):
         if not email:
             raise ValueError("The Email field must be set.")
 
-        email = self.normalize_email(email)
+        email = self.normalize_email(email).lower()
         extra_fields.setdefault("is_active", True)
 
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
+
+    def get_by_natural_key(self, email):
+        """Look users up by email, which is always stored in lowercase (used at login)."""
+        return self.get(email=email.lower())
 
     def create_superuser(self, email, password=None, **extra_fields):
         """

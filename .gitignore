@@ -68,3 +68,5 @@ htmlcov/
 *.tmp
 CLAUDE.local.md
 .claude/settings.local.json
+docs/backlog.md
+docs/plan.md

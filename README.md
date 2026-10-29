@@ -155,7 +155,6 @@ python manage.py runserver
 ### Authentication
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/accounts/register/` | Register new user |
 | POST | `/api/v1/accounts/token/` | Obtain JWT token pair |
 | POST | `/api/v1/accounts/token/refresh/` | Refresh access token |
 | POST | `/api/v1/accounts/token/verify/` | Verify token |

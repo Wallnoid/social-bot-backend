@@ -5,7 +5,7 @@
 ## Glossary
 | Term | Meaning |
 |---|---|
-| Tenant | A business using the suite, with its own users, channel accounts, contacts and data |
+| Tenant | A business using the suite, with its own users, channel accounts, contacts and data. Has a name, an optional industry (predefined list for Ecuador/Latin America) and an optional description |
 | Channel | WhatsApp Business API, Messenger or Instagram |
 | Channel account | One connected number or page of a tenant on a channel (a `wanps-core` account) |
 | Conversation | The chat between a contact and a tenant on a channel account; the bot can be paused per conversation |

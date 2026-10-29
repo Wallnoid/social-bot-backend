@@ -38,6 +38,7 @@ Summary of the most critical ones (full detail in the imported file below):
 - Code, identifiers, docs and commit messages in English.
 - API is versioned under `/api/v1/`; errors use the custom exception handler's JSON format.
 - New apps go under `apps/` and follow the layout of `apps/accounts/` (models, serializers, views, urls, admin, tests).
+- Emails are stored in lowercase, login ignores capitalization, and the database rejects two users whose emails differ only by case.
 - Per-area rules live in `.claude/rules/`.
 
 ## Detailed documentation

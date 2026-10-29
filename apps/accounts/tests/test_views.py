@@ -55,11 +55,9 @@ def admin_client(api_client, admin_user):
 
 @pytest.mark.django_db
 class TestRegisterView:
-    """Tests for user registration."""
+    """Public registration is disabled: users join through businesses."""
 
-    def test_register_success(self, api_client):
-        """Test successful user registration."""
-        url = reverse("accounts:register")
+    def test_register_endpoint_is_rejected(self, api_client):
         data = {
             "email": "newuser@example.com",
             "first_name": "New",
@@ -67,37 +65,74 @@ class TestRegisterView:
             "password": "StrongPass123!",
             "password_confirm": "StrongPass123!",
         }
-        response = api_client.post(url, data, format="json")
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data["success"] is True
-        assert User.objects.filter(email="newuser@example.com").exists()
+        response = api_client.post("/api/v1/accounts/register/", data, format="json")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert not User.objects.filter(email="newuser@example.com").exists()
 
-    def test_register_password_mismatch(self, api_client):
-        """Test registration fails when passwords don't match."""
-        url = reverse("accounts:register")
+
+@pytest.mark.django_db
+class TestUsersCollectionEndpoint:
+    """Users of all businesses are not exposed or managed through the API."""
+
+    def test_users_list_is_rejected_even_for_staff(self, admin_client, user):
+        response = admin_client.get("/api/v1/accounts/users/")
+        assert response.status_code in (
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+
+    def test_users_create_is_rejected_even_for_staff(self, admin_client):
         data = {
             "email": "newuser@example.com",
             "first_name": "New",
             "last_name": "User",
             "password": "StrongPass123!",
-            "password_confirm": "DifferentPass456!",
-        }
-        response = api_client.post(url, data, format="json")
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_register_duplicate_email(self, api_client, user):
-        """Test registration fails with duplicate email."""
-        url = reverse("accounts:register")
-        data = {
-            "email": user.email,
-            "first_name": "New",
-            "last_name": "User",
-            "password": "StrongPass123!",
             "password_confirm": "StrongPass123!",
         }
-        response = api_client.post(url, data, format="json")
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        response = admin_client.post("/api/v1/accounts/users/", data, format="json")
+        assert response.status_code in (
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+        assert not User.objects.filter(email="newuser@example.com").exists()
 
+    def test_users_delete_is_rejected_even_for_staff(self, admin_client, user):
+        response = admin_client.delete(f"/api/v1/accounts/users/{user.id}/")
+        assert response.status_code in (
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+        assert User.objects.filter(id=user.id).exists()
+
+@pytest.mark.django_db
+class TestUserDetailEndpoint:
+    """A user can only reach their own account by id."""
+
+    def test_user_cannot_retrieve_another_user(self, authenticated_client):
+        other = User.objects.create_user(
+            email="other@example.com",
+            password="otherpass123",
+            first_name="Other",
+            last_name="User",
+        )
+        response = authenticated_client.get(f"/api/v1/accounts/users/{other.id}/")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_staff_cannot_update_another_user(self, admin_client, user):
+        response = admin_client.patch(
+            f"/api/v1/accounts/users/{user.id}/",
+            {"first_name": "Changed"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        user.refresh_from_db()
+        assert user.first_name == "Test"
+
+    def test_user_can_still_retrieve_own_profile_by_id(self, authenticated_client, user):
+        response = authenticated_client.get(f"/api/v1/accounts/users/{user.id}/")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["email"] == user.email
 
 @pytest.mark.django_db
 class TestUserMeEndpoint:
@@ -172,6 +207,16 @@ class TestTokenEndpoints:
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
         assert "refresh" in response.data
+
+    def test_login_ignores_email_capitalization(self, api_client, user):
+        url = reverse("accounts:token_obtain_pair")
+        data = {
+            "email": "TestUser@Example.COM",
+            "password": "testpass123",
+        }
+        response = api_client.post(url, data, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        assert "access" in response.data
 
     def test_refresh_token(self, api_client, user):
         """Test refreshing JWT token."""

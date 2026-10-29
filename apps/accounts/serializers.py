@@ -45,50 +45,6 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
-class UserCreateSerializer(serializers.ModelSerializer):
-    """
-    Serializer for user registration.
-    Validates password strength and creates the user.
-    """
-
-    password = serializers.CharField(
-        write_only=True,
-        required=True,
-        validators=[validate_password],
-        style={"input_type": "password"},
-    )
-    password_confirm = serializers.CharField(
-        write_only=True,
-        required=True,
-        style={"input_type": "password"},
-    )
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "email",
-            "username",
-            "first_name",
-            "last_name",
-            "phone",
-            "password",
-            "password_confirm",
-        ]
-        read_only_fields = ["id"]
-
-    def validate(self, attrs):
-        if attrs["password"] != attrs.pop("password_confirm"):
-            raise serializers.ValidationError(
-                {"password_confirm": "Passwords do not match."}
-            )
-        return attrs
-
-    def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        return user
-
-
 class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for updating user profile.

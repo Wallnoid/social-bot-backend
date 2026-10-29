@@ -2,7 +2,6 @@
 URL configuration for the accounts app.
 
 Includes:
-- User registration
 - JWT token obtain/refresh/blacklist
 - User CRUD (ViewSet)
 """
@@ -16,7 +15,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 
-from .views import RegisterView, UserViewSet
+from .views import UserViewSet
 
 app_name = "accounts"
 
@@ -25,7 +24,6 @@ router.register(r"users", UserViewSet, basename="user")
 
 urlpatterns = [
     # Authentication
-    path("register/", RegisterView.as_view(), name="register"),
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("token/verify/", TokenVerifyView.as_view(), name="token_verify"),

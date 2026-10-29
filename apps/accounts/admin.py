@@ -4,16 +4,26 @@ Admin configuration for the accounts app.
 Customizes the Django admin panel for the User model.
 """
 
+from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import UserChangeForm
 
 User = get_user_model()
+
+
+class UserAdminChangeForm(UserChangeForm):
+    """Edit form that keeps the optional username empty instead of failing."""
+
+    username = forms.CharField(max_length=150, required=False, empty_value=None)
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Custom admin configuration for the User model."""
+
+    form = UserAdminChangeForm
 
     list_display = [
         "email",
