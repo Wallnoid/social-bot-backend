@@ -1,0 +1,35 @@
+services:
+  web:
+    build:
+      target: base
+    # Instalamos debugpy al vuelo y levantamos el servidor de desarrollo en lugar de gunicorn
+    command: >
+      sh -c "pip install debugpy && 
+             python -m debugpy --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
+    volumes:
+      # Sincronizamos el código local con el contenedor en tiempo real (Hot Reload)
+      - .:/app
+    ports:
+      # Exponemos el puerto de debugpy para conectar VS Code
+      - "5678:5678"
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.local
+      - DEBUG=True
+
+  celery-worker:
+    build:
+      target: base
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.local
+      - DEBUG=True
+
+  celery-beat:
+    build:
+      target: base
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.local
+      - DEBUG=True
