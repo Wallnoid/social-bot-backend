@@ -1,6 +1,19 @@
-# Django Backend Template 🚀
+# Social Bot Backend
 
-A **production-ready** Django REST API template with best practices built-in.
+Backend for the Social Bot suite: reply to WhatsApp Business API, Messenger and Instagram messages, plus calendar, CRM and notifications. Channels are provided by `wanps-core`.
+
+## 🎯 What it is
+
+An omnichannel messaging and CRM suite (similar to Kommo or respond.io):
+
+- **Inbox:** answer WhatsApp Business API, Messenger and Instagram messages from one place, with a pausable bot per conversation.
+- **CRM:** contacts and a sales pipeline.
+- **Calendar:** appointments linked to contacts.
+- **Notifications.**
+- **Multi-tenant:** each business has its own channel accounts, bots, users and data.
+- **Roles (initial):** agent, supervisor, admin.
+
+The frontend talks only to this backend. Channel connections come from [`wanps-core`](../wanps-core) (sibling repo); see its README for webhooks, multi-tenant mode and the AI handlers. The CRM, calendar, notifications and inbox modules are planned and not built yet; today the repo has the base (users, JWT auth, Docker, Celery). More detail in `CLAUDE.md` and `docs/`.
 
 ## ✨ Features
 
@@ -63,7 +76,7 @@ A **production-ready** Django REST API template with best practices built-in.
 ├── Dockerfile                 # Multi-stage production build
 ├── Makefile                   # Common commands
 ├── pyproject.toml             # Dependencies & tool config
-└── .env.example               # Environment variables template
+└── .env.example               # Environment variables example
 ```
 
 ## 🐳 Docker Architecture & Services
@@ -91,7 +104,7 @@ When you run this project using Docker (`docker-compose.yml`), it spins up the f
 
 ```bash
 git clone <repository-url>
-cd backend-django-template
+cd social-bot-backend
 
 # Copy environment variables
 cp .env.example .env
