@@ -23,7 +23,7 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://postgres:postgres@localhost:5432/django_template",
+        default="postgres://postgres:postgres@localhost:5432/social_bot",
     ),
 }
 

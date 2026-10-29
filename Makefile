@@ -1,5 +1,5 @@
 # ==============================================================================
-# Django Backend Template — Makefile
+# Social Bot Backend — Makefile
 # ==============================================================================
 # Quick reference for common commands.
 # Usage: make <target>

@@ -57,6 +57,6 @@ if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # Customize admin site
-admin.site.site_header = "Django Backend Template"
-admin.site.site_title = "Admin Portal"
+admin.site.site_header = "Social Bot"
+admin.site.site_title = "Social Bot Admin"
 admin.site.index_title = "Administration"

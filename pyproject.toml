@@ -1,7 +1,7 @@
 [project]
-name = "django-backend-template"
+name = "social-bot-backend"
 version = "1.0.0"
-description = "A production-ready Django REST API backend template"
+description = "Backend for the Social Bot suite: WhatsApp, Messenger and Instagram inbox, calendar, CRM and notifications"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

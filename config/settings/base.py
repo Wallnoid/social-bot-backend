@@ -121,7 +121,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://postgres:postgres@localhost:5432/django_template",
+        default="postgres://postgres:postgres@localhost:5432/social_bot",
     ),
 }
 
@@ -245,9 +245,9 @@ SIMPLE_JWT = {
 # =============================================================================
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Django Backend Template API",
-    "DESCRIPTION": "A production-ready Django REST API template with authentication, "
-    "CRUD operations, and best practices built-in.",
+    "TITLE": "Social Bot API",
+    "DESCRIPTION": "Backend API for the Social Bot suite: WhatsApp, Messenger and Instagram "
+    "conversations, calendar, CRM and notifications.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
