@@ -40,6 +40,7 @@ Summary of the most critical ones (full detail in the imported file below):
 - New apps go under `apps/` and follow the layout of `apps/accounts/` (models, serializers, views, urls, admin, tests).
 - Emails are stored in lowercase, login ignores capitalization, and the database rejects two users whose emails differ only by case.
 - Password links use Django's token generator; their lifetime comes from `PASSWORD_RESET_TIMEOUT` in `.env` and emails link to `FRONTEND_URL`. Outgoing email uses the SMTP settings from `.env`; local defaults to the console.
+- The active business comes from the `X-Tenant-ID` header; views opt in with `HasActiveTenant` (`apps/tenants/permissions.py`), which sets `request.tenant` and `request.membership`.
 - Per-area rules live in `.claude/rules/`.
 
 ## Detailed documentation
