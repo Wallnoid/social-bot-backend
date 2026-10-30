@@ -5,8 +5,12 @@ A tenant is a business using the suite. Users belong to tenants through
 memberships, which carry the role the user has in that business.
 """
 
+import secrets
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.core.models import BaseModel
 
@@ -76,3 +80,38 @@ class Membership(BaseModel):
 
     def __str__(self):
         return f"{self.user} - {self.tenant} ({self.role})"
+
+
+def generate_invitation_token():
+    return secrets.token_urlsafe(32)
+
+
+def default_invitation_expiry():
+    return timezone.now() + timedelta(seconds=settings.INVITATION_TIMEOUT)
+
+
+class Invitation(BaseModel):
+    """An invitation for a person to join a tenant with a role."""
+
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+    )
+    email = models.EmailField()
+    role = models.CharField(max_length=20, choices=Membership.Role.choices)
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_invitations",
+    )
+    token = models.CharField(
+        max_length=64,
+        unique=True,
+        default=generate_invitation_token,
+        editable=False,
+    )
+    expires_at = models.DateTimeField(default=default_invitation_expiry)
+
+    def __str__(self):
+        return f"{self.email} - {self.tenant} ({self.role})"
