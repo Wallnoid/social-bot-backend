@@ -38,3 +38,10 @@ class HasActiveTenant(BasePermission):
         request.membership = membership
         request.tenant = membership.tenant
         return True
+
+
+class IsTenantAdmin(BasePermission):
+    """Allows only admins of the active business; use after HasActiveTenant."""
+
+    def has_permission(self, request, view):
+        return request.membership.role == Membership.Role.ADMIN
