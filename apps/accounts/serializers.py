@@ -56,6 +56,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
 
     full_name = serializers.CharField(read_only=True)
+    tenants = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -70,6 +71,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "bio",
             "avatar",
             "date_of_birth",
+            "tenants",
             "created_at",
             "updated_at",
         ]
@@ -78,6 +80,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "email",
             "created_at",
             "updated_at",
+        ]
+
+    def get_tenants(self, user):
+        """Businesses the user belongs to, with their role in each."""
+        return [
+            {"id": str(m.tenant_id), "name": m.tenant.name, "role": m.role}
+            for m in user.memberships.filter(tenant__is_deleted=False).select_related(
+                "tenant"
+            )
         ]
 
 
