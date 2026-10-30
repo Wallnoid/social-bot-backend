@@ -6,6 +6,10 @@ Handles serialization/deserialization of User data for the API.
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 
 User = get_user_model()
@@ -109,3 +113,53 @@ class ChangePasswordSerializer(serializers.Serializer):
         if not user.check_password(value):
             raise serializers.ValidationError("Old password is incorrect.")
         return value
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    """
+    Serializer for creating a password from the link sent by email.
+    The link carries the user id (uid) and a one-time token.
+    """
+
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(style={"input_type": "password"})
+    new_password_confirm = serializers.CharField(
+        style={"input_type": "password"},
+    )
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs.pop("new_password_confirm"):
+            raise serializers.ValidationError(
+                {"new_password_confirm": "Passwords do not match."}
+            )
+        user = self._get_user(attrs["uid"])
+        if (
+            user is None
+            or not user.is_active
+            or not default_token_generator.check_token(user, attrs["token"])
+        ):
+            raise serializers.ValidationError(
+                {"token": "The link is invalid or has expired."}
+            )
+        try:
+            validate_password(attrs["new_password"], user)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(
+                {"new_password": list(error.messages)}
+            ) from error
+        attrs["user"] = user
+        return attrs
+
+    @staticmethod
+    def _get_user(uid):
+        try:
+            return User.objects.get(pk=force_str(urlsafe_base64_decode(uid)))
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+            DjangoValidationError,
+            User.DoesNotExist,
+        ):
+            return None

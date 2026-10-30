@@ -5,13 +5,18 @@ Businesses are created here by the Social Bot team, together with their first
 admin.
 """
 
+import logging
+
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
+
+from apps.accounts.emails import send_set_password_email
 
 from .models import Membership, Tenant
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class TenantCreateForm(forms.ModelForm):
@@ -82,3 +87,13 @@ class TenantAdmin(admin.ModelAdmin):
                 last_name=data["admin_last_name"],
             )
         Membership.objects.create(tenant=obj, user=user, role=Membership.Role.ADMIN)
+        if not user.has_usable_password():
+            try:
+                send_set_password_email(user)
+            except Exception:
+                logger.exception("Could not send set-password email to %s", user.pk)
+                messages.error(
+                    request,
+                    f"The business was created, but the email to {user.email} "
+                    "could not be sent.",
+                )

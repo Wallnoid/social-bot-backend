@@ -8,18 +8,43 @@ Provides:
 """
 
 from django.contrib.auth import get_user_model
-from rest_framework import mixins, permissions, viewsets
+from rest_framework import generics, mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from apps.core.throttling import BurstAnonRateThrottle
 
 from .permissions import IsAccountOwner
 from .serializers import (
     ChangePasswordSerializer,
+    SetPasswordSerializer,
     UserProfileSerializer,
     UserSerializer,
 )
 
 User = get_user_model()
+
+
+class SetPasswordView(generics.GenericAPIView):
+    """
+    Create a password from the link sent by email.
+
+    POST /api/v1/accounts/set-password/
+    """
+
+    serializer_class = SetPasswordSerializer
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [BurstAnonRateThrottle]
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        user.set_password(serializer.validated_data["new_password"])
+        user.save()
+        return Response(
+            {"success": True, "message": "Password created successfully."}
+        )
 
 
 class UserViewSet(
