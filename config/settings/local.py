@@ -49,10 +49,13 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (  # noqa: F405
 CORS_ALLOW_ALL_ORIGINS = True
 
 # =============================================================================
-# EMAIL (Console backend for development)
+# EMAIL (Console backend by default; set EMAIL_BACKEND in .env to send for real)
 # =============================================================================
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
 
 # =============================================================================
 # CACHING (Local Memory)

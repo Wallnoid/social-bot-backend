@@ -267,6 +267,25 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
 
+# Base URL of the frontend, used in links sent by email
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+
+# Seconds a password link (e.g. the one emailed to a new admin) stays valid
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24 * 7)
+
+# =============================================================================
+# EMAIL (SMTP; the backend itself is chosen in local.py / production.py)
+# =============================================================================
+
+EMAIL_HOST = env("EMAIL_HOST", default="smtp.hostinger.com")
+EMAIL_PORT = env.int("EMAIL_PORT", default=465)
+# STARTTLS (usually port 587) and SSL (usually port 465) are mutually exclusive
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=True)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Social Bot <contact@wanps.tech>")
+
 # =============================================================================
 # CELERY
 # =============================================================================
