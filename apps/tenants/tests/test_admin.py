@@ -78,7 +78,7 @@ def test_admin_creates_business_with_industry_and_description(staff_client):
         {
             "name": "Acme Dental",
             "industry": "health",
-            "description": "Clínica dental en Quito",
+            "description": "Dental clinic in Quito",
             "admin_email": "owner@acme.test",
             "admin_first_name": "Olivia",
             "admin_last_name": "Owner",
@@ -88,7 +88,7 @@ def test_admin_creates_business_with_industry_and_description(staff_client):
     assert response.status_code == 302
     tenant = Tenant.objects.get(name="Acme Dental")
     assert tenant.industry == "health"
-    assert tenant.description == "Clínica dental en Quito"
+    assert tenant.description == "Dental clinic in Quito"
 
 
 @pytest.mark.django_db

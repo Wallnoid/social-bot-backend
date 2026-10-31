@@ -1,23 +1,23 @@
-## Historia
-Como admin de un negocio, quiero iniciar sesión y ver en qué negocio estoy trabajando y mi rol, para saber que estoy en el lugar correcto.
+## Story
+As a business admin, I want to log in and see which business I am working in and my role, so that I know I am in the right place.
 
-## Criterios de aceptación
-- [ ] Dado que pertenezco a un negocio, cuando inicio sesión y pido mi perfil, entonces veo el nombre de ese negocio y mi rol en él.
-- [ ] Dado que pertenezco a varios negocios, cuando pido mi perfil, entonces veo cada uno con mi rol en ese negocio, y ninguno al que no pertenezco.
-- [ ] Dado que me quitaron de un negocio o ese negocio fue eliminado, cuando pido mi perfil, entonces ese negocio ya no aparece.
+## Acceptance criteria
+- [ ] Given I belong to a business, when I log in and request my profile, then I see that business's name and my role in it.
+- [ ] Given I belong to several businesses, when I request my profile, then I see each one with my role in it, and none I do not belong to.
+- [ ] Given I was removed from a business or that business was deleted, when I request my profile, then that business no longer appears.
 
 ## Plan
-- El login no cambia: el frontend inicia sesión con JWT y luego pide el perfil.
-- El perfil del usuario incluye, solo para lectura, la lista de sus negocios: id, nombre y su rol en cada uno.
-- La lista sale únicamente de sus membresías activas y de negocios no eliminados.
-- Tests a nivel de API: un negocio, varios negocios sin fugas de otros, y membresía o negocio eliminados.
+- Login does not change: the frontend logs in with JWT and then requests the profile.
+- The user profile includes, read-only, the list of their businesses: id, name and their role in each one.
+- The list comes only from their active memberships and from businesses that are not deleted.
+- API-level tests: one business, several businesses with no leaks from others, and a deleted membership or business.
 
-## Fuera de alcance
-- Elegir o cambiar el negocio activo y filtrar datos por negocio (#3).
-- Negocios suspendidos (#11): por ahora aparecen como cualquier otro.
-- Permisos según el rol (#7).
-- Datos del negocio más allá de id, nombre y rol (industria, descripción).
-- Limitar la lista a admins: aplica a cualquier miembro (agent, supervisor o admin).
+## Out of scope
+- Choosing or switching the active business and filtering data by business (#3).
+- Suspended businesses (#11): for now they appear like any other.
+- Permissions by role (#7).
+- Business data beyond id, name and role (industry, description).
+- Limiting the list to admins: it applies to any member (agent, supervisor or admin).
 
-## Sugerencias (tú decides)
-- La lista va dentro de `/me` (una sola llamada tras el login); la #3 puede leer del mismo sitio.
+## Suggestions (your call)
+- The list goes inside `/me` (a single call after login); #3 can read from the same place.

@@ -1,25 +1,25 @@
-## Historia
-Como usuario que pertenece a varios negocios, quiero elegir y cambiar el negocio en el que trabajo, para ver solo los datos de ese negocio.
+## Story
+As a user who belongs to several businesses, I want to choose and switch the business I work in, so that I see only that business's data.
 
-## Criterios de aceptación
-- [ ] Dado que pertenezco a varios negocios, cuando indico en una petición con cuál quiero trabajar, entonces la API trabaja en ese negocio y me muestra cuál es y mi rol en él; y si indico otro, trabaja en el otro.
-- [ ] Dado que indico un negocio al que no pertenezco, que me quitaron o que fue eliminado, cuando hago la petición, entonces la API la rechaza como si ese negocio no existiera.
-- [ ] Dado que pertenezco a varios negocios y no indico ninguno, cuando hago la petición, entonces la API me pide elegir uno (y si pertenezco a uno solo, trabaja en ese sin que yo lo indique).
+## Acceptance criteria
+- [ ] Given I belong to several businesses, when I indicate in a request which one I want to work with, then the API works in that business and shows me which one it is and my role in it; if I indicate another, it works in the other.
+- [ ] Given I indicate a business I do not belong to, was removed from or that was deleted, when I make the request, then the API rejects it as if that business did not exist.
+- [ ] Given I belong to several businesses and indicate none, when I make the request, then the API asks me to choose one (and if I belong to only one, it works in that one without me indicating it).
 
 ## Plan
-- El frontend indica el negocio activo en cada petición con una cabecera (`X-Tenant-ID`). Cambiar de negocio es mandar otro id; no se guarda nada en el servidor.
-- El backend comprueba en cada petición que el usuario tiene una membresía activa en un negocio no eliminado; si no, responde como si no existiera.
-- El negocio activo y el rol del usuario quedan disponibles para el resto de la API, para que las historias siguientes filtren sus datos con ellos.
-- Un endpoint mínimo (`GET /api/v1/tenants/current/`) devuelve el negocio activo y mi rol, para poder verificar el mecanismo de punta a punta.
-- Tests a nivel de API: negocio elegido, otro negocio, negocio ajeno, removido o eliminado, sin indicar con varios, y con uno solo.
+- The frontend indicates the active business in each request with a header (`X-Tenant-ID`). Switching business means sending another id; nothing is stored on the server.
+- On each request the backend checks that the user has an active membership in a business that is not deleted; if not, it responds as if it did not exist.
+- The active business and the user's role stay available to the rest of the API, so the following stories can filter their data with them.
+- A minimal endpoint (`GET /api/v1/tenants/current/`) returns the active business and my role, to verify the mechanism end to end.
+- API-level tests: chosen business, another business, a foreign, removed or deleted business, none indicated with several, and with only one.
 
-## Fuera de alcance
-- Filtrar datos reales por negocio (contactos, conversaciones, canales): llega con la #8 y la #10, que usarán este mecanismo.
-- Permisos según el rol (#7).
-- Negocios suspendidos (#11): por ahora se comportan como cualquier otro.
-- Recordar el último negocio usado entre sesiones.
+## Out of scope
+- Filtering real data by business (contacts, conversations, channels): it comes with #8 and #10, which will use this mechanism.
+- Permissions by role (#7).
+- Suspended businesses (#11): for now they behave like any other.
+- Remembering the last business used between sessions.
 
-## Decisiones tomadas
-- El negocio activo va en la cabecera `X-Tenant-ID` (no en el token JWT), para no tocar el login y poder tener dos negocios abiertos en dos pestañas.
-- Con varios negocios y sin indicar ninguno, la API responde con un error que pide elegir; nunca toma uno por defecto.
-- El endpoint mínimo es propio (`tenants/current/`), no parte de `/me`.
+## Decisions made
+- The active business goes in the `X-Tenant-ID` header (not in the JWT), so login stays untouched and two businesses can be open in two tabs.
+- With several businesses and none indicated, the API responds with an error asking to choose; it never picks one by default.
+- The minimal endpoint is its own (`tenants/current/`), not part of `/me`.
