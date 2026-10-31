@@ -39,6 +39,19 @@ class InvitationSerializer(serializers.ModelSerializer):
         return email
 
 
+class MemberSerializer(serializers.ModelSerializer):
+    """Serializer for a member of a business; only the role can be changed."""
+
+    first_name = serializers.CharField(source="user.first_name", read_only=True)
+    last_name = serializers.CharField(source="user.last_name", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+
+    class Meta:
+        model = Membership
+        fields = ["id", "first_name", "last_name", "email", "role"]
+        read_only_fields = ["id"]
+
+
 class InvitationLookupSerializer(serializers.Serializer):
     """Serializer for reading an invitation from the token in its link."""
 

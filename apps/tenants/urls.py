@@ -9,6 +9,8 @@ from .views import (
     InvitationAcceptView,
     InvitationCreateView,
     InvitationLookupView,
+    MemberDetailView,
+    MemberListView,
 )
 
 app_name = "tenants"
@@ -18,4 +20,6 @@ urlpatterns = [
     path("invitations/", InvitationCreateView.as_view(), name="invitations"),
     path("invitations/lookup/", InvitationLookupView.as_view(), name="invitation-lookup"),
     path("invitations/accept/", InvitationAcceptView.as_view(), name="invitation-accept"),
+    path("members/", MemberListView.as_view(), name="members"),
+    path("members/<uuid:member_id>/", MemberDetailView.as_view(), name="member-detail"),
 ]
