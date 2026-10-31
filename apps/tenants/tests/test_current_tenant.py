@@ -7,11 +7,11 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from apps.tenants.models import Membership, Tenant
+from apps.tenants.tests.helpers import PASSWORD, log_in
 
 User = get_user_model()
 
 CURRENT_URL = "/api/v1/tenants/current/"
-PASSWORD = "StrongPass123!"
 
 
 @pytest.fixture
@@ -22,14 +22,7 @@ def user(db):
 @pytest.fixture
 def logged_in(user):
     """Return an API client that logged in through the real login endpoint."""
-    api = APIClient()
-    response = api.post(
-        "/api/v1/accounts/token/",
-        {"email": "olivia@acme.test", "password": PASSWORD},
-        format="json",
-    )
-    api.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
-    return api
+    return log_in(APIClient(), "olivia@acme.test")
 
 
 @pytest.fixture
