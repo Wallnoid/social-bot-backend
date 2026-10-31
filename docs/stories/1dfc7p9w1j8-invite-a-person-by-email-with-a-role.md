@@ -1,26 +1,26 @@
-## Historia
-Como admin de un negocio, quiero invitar a una persona por email con un rol (agent, supervisor o admin), y que la invitación caduque a la semana, para que mi equipo pueda entrar al negocio sin dejar invitaciones abiertas para siempre.
+## Story
+As a business admin, I want to invite a person by email with a role (agent, supervisor or admin), and have the invitation expire after one week, so that my team can access the business without leaving invitations open forever.
 
-## Criterios de aceptación
-- [ ] Dado que soy admin del negocio activo, cuando invito un email con un rol, entonces esa persona recibe un email con un enlace para unirse a ese negocio con ese rol, que indica cuándo caduca (7 días por defecto).
-- [ ] Dado que soy agent o supervisor del negocio activo, cuando intento invitar a alguien, entonces la API lo rechaza.
-- [ ] Dado que el email ya es miembro de ese negocio o ya tiene una invitación pendiente en él, cuando lo invito, entonces la API lo rechaza con un mensaje claro.
+## Acceptance criteria
+- [ ] Given I am an admin of the active business, when I invite an email with a role, then that person receives an email with a link to join that business with that role, stating when it expires (7 days by default).
+- [ ] Given I am an agent or supervisor of the active business, when I try to invite someone, then the API rejects it.
+- [ ] Given the email is already a member of that business or already has a pending invitation in it, when I invite it, then the API rejects it with a clear message.
 
 ## Plan
-- Un registro de invitación por negocio con email, rol, quién invitó, un token de un solo uso y la fecha de caducidad, calculada con un valor del `.env` (7 días por defecto).
-- Un endpoint para el admin del negocio activo (`X-Tenant-ID`) que valida el email y el rol, crea la invitación y envía el email con el enlace `{FRONTEND_URL}/accept-invitation?token=…`.
-- Solo un admin del negocio activo puede invitar; agent y supervisor reciben un rechazo.
-- Se rechaza invitar a quien ya es miembro activo o tiene una invitación pendiente sin caducar en ese negocio.
-- Si el email no se puede enviar, la API responde con error y la invitación no se guarda.
+- An invitation record per business with email, role, who invited, a single-use token and the expiry date, calculated from a value in `.env` (7 days by default).
+- An endpoint for the admin of the active business (`X-Tenant-ID`) that validates the email and role, creates the invitation and sends the email with the link `{FRONTEND_URL}/accept-invitation?token=…`.
+- Only an admin of the active business can invite; agent and supervisor get a rejection.
+- Inviting someone who is already an active member or has a non-expired pending invitation in that business is rejected.
+- If the email cannot be sent, the API responds with an error and the invitation is not saved.
 
-## Fuera de alcance
-- Aceptar la invitación, con cuenta nueva o existente (#5).
-- Cancelar una invitación pendiente (#12).
-- Listar las invitaciones pendientes del negocio.
-- Reenviar una invitación caducada.
-- Permisos por rol en el resto de la API (#7): aquí solo se comprueba que quien invita es admin.
+## Out of scope
+- Accepting the invitation, with a new or existing account (#5).
+- Cancelling a pending invitation (#12).
+- Listing the business's pending invitations.
+- Resending an expired invitation.
+- Permissions by role in the rest of the API (#7): here it only checks that the inviter is an admin.
 
-## Decisiones tomadas
-- La caducidad es configurable en el `.env`, con 7 días por defecto.
-- Se rechaza invitar a un miembro activo o a un email con invitación pendiente sin caducar.
-- Sin email enviado no hay invitación: una invitación que nadie recibió no sirve de nada.
+## Decisions made
+- The expiry is configurable in `.env`, with 7 days by default.
+- Inviting an active member or an email with a non-expired pending invitation is rejected.
+- No email sent means no invitation: an invitation nobody received is useless.

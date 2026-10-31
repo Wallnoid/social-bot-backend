@@ -1,23 +1,23 @@
-## Historia
-Como miembro del equipo de Social Bot, quiero crear un negocio con su primer admin desde el admin de Django, para que un nuevo cliente pueda empezar a usar la suite.
+## Story
+As a Social Bot team member, I want to create a business with its first admin from the Django admin, so that a new client can start using the suite.
 
-## Criterios de aceptación
-- [ ] Dado que estoy en el admin de Django, cuando creo un negocio con su nombre, su industria (de una lista predefinida), una descripción (industria y descripción son opcionales) y el email y nombre de su primer admin, entonces el negocio existe y esa persona es miembro con el rol de admin (sin contraseña todavía).
-- [ ] Dado que el email del primer admin ya pertenece a un usuario existente, cuando creo el negocio, entonces ese mismo usuario pasa a ser admin del nuevo negocio y no se crea una cuenta duplicada.
-- [ ] Dado que cualquier persona, cuando intenta registrarse por la API o crear, listar o borrar usuarios de otros negocios, entonces la API lo rechaza.
+## Acceptance criteria
+- [ ] Given I am in the Django admin, when I create a business with its name, its industry (from a predefined list), a description (industry and description are optional) and the email and name of its first admin, then the business exists and that person is a member with the admin role (with no password yet).
+- [ ] Given the first admin's email already belongs to an existing user, when I create the business, then that same user becomes admin of the new business and no duplicate account is created.
+- [ ] Given anyone, when they try to sign up through the API or to create, list or delete users of other businesses, then the API rejects it.
 
 ## Plan
-- Añadir el negocio (tenant) y la membresía que une a un usuario con un negocio y un rol (agente, supervisor o admin).
-- En el admin de Django, un formulario para crear un negocio (nombre, industria de una lista predefinida y descripción) que también pida el email y nombre del primer admin, y que cree el usuario o reutilice el existente.
-- Mostrar en el admin los miembros del negocio y sus roles, solo lectura por ahora.
-- Desactivar el registro público y retirar de la API los endpoints que listan, crean o borran usuarios de todos los negocios.
-- Tests: crear con usuario nuevo, crear con usuario existente y registro rechazado.
+- Add the business (tenant) and the membership that links a user to a business with a role (agent, supervisor or admin).
+- In the Django admin, a form to create a business (name, industry from a predefined list and description) that also asks for the first admin's email and name, and creates the user or reuses the existing one.
+- Show the business's members and their roles in the admin, read-only for now.
+- Disable public sign-up and remove from the API the endpoints that list, create or delete users across all businesses.
+- Tests: create with a new user, create with an existing user, and sign-up rejected.
 
-## Fuera de alcance
-- El email con el enlace para crear la contraseña (historia aparte).
-- Mostrar el negocio y el rol tras iniciar sesión (#2), elegir o cambiar de negocio (#3).
-- Invitaciones (#4, #5, #12), suspender y reactivar (#11), cuentas de canal (#8).
-- Registro autónomo de negocios.
+## Out of scope
+- The email with the link to create the password (separate story).
+- Showing the business and role after logging in (#2), choosing or switching business (#3).
+- Invitations (#4, #5, #12), suspending and reactivating (#11), channel accounts (#8).
+- Self-service business sign-up.
 
-## Sugerencias (tú decides)
-- Un usuario sin contraseña no puede entrar hasta usar el enlace. El walking skeleton completo (crear negocio y entrar) queda repartido entre esta historia y la del enlace de contraseña, que conviene hacer seguidas.
+## Suggestions (your call)
+- A user with no password cannot get in until they use the link. The full walking skeleton (create a business and get in) is split between this story and the password link story, so it is best to do them back to back.

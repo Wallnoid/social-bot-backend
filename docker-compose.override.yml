@@ -7,7 +7,7 @@ services:
       sh -c "pip install debugpy && 
              python -m debugpy --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
     volumes:
-      # Sincronizamos el código local con el contenedor en tiempo real (Hot Reload)
+      # Sync local code with the container in real time (hot reload)
       - .:/app
     ports:
       # Exponemos el puerto de debugpy para conectar VS Code
