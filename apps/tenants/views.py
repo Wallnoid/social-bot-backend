@@ -6,8 +6,10 @@ import logging
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from rest_framework import generics, status
-from rest_framework.exceptions import APIException
+from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, serializers, status
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,12 +17,13 @@ from rest_framework.views import APIView
 from apps.core.throttling import BurstAnonRateThrottle, BurstUserRateThrottle
 
 from .emails import send_invitation_email
-from .models import Invitation, Membership
+from .models import Invitation, Membership, Tenant
 from .permissions import HasActiveTenant, IsTenantAdmin
 from .serializers import (
     InvitationAcceptSerializer,
     InvitationLookupSerializer,
     InvitationSerializer,
+    MemberSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -154,3 +157,103 @@ class InvitationAcceptView(generics.GenericAPIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+def other_members(request):
+    """The members of the active business, without the admin asking."""
+    return (
+        Membership.objects.filter(tenant=request.tenant)
+        .exclude(user=request.user)
+        .select_related("user")
+    )
+
+
+def cancel_invitations_sent_by(member):
+    """Keep someone who lost admin access from coming back through their own invitations."""
+    for invitation in Invitation.objects.filter(tenant=member.tenant, invited_by=member.user):
+        invitation.soft_delete()
+
+
+class MemberListView(generics.GenericAPIView):
+    """
+    GET /api/v1/tenants/members/ → the members of the active business, without
+    the admin asking.
+    """
+
+    serializer_class = MemberSerializer
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "MemberListResponse",
+                {"success": serializers.BooleanField(), "data": MemberSerializer(many=True)},
+            )
+        }
+    )
+    def get(self, request):
+        members = other_members(request)
+        return Response({"success": True, "data": self.get_serializer(members, many=True).data})
+
+
+class MemberDetailView(generics.GenericAPIView):
+    """
+    PATCH /api/v1/tenants/members/<id>/ → change the role of a member.
+    DELETE /api/v1/tenants/members/<id>/ → remove a member from the business.
+    """
+
+    serializer_class = MemberSerializer
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    def get_member(self, request, member_id):
+        """
+        Call inside a transaction. The lock makes admins of a business act one at
+        a time, so two admins demoting each other cannot leave it without an admin.
+        """
+        get_object_or_404(Tenant.objects.select_for_update(no_key=True), pk=request.tenant.pk)
+        if not Membership.objects.filter(
+            tenant=request.tenant, user=request.user, role=Membership.Role.ADMIN
+        ).exists():
+            raise PermissionDenied
+        return get_object_or_404(other_members(request), pk=member_id)
+
+    @extend_schema(
+        # A plain schema, because the generator makes every serializer field optional on PATCH
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {"role": {"type": "string", "enum": Membership.Role.values}},
+                "required": ["role"],
+            }
+        },
+        responses={
+            200: inline_serializer(
+                "MemberResponse",
+                {"success": serializers.BooleanField(), "data": MemberSerializer()},
+            )
+        },
+    )
+    def patch(self, request, member_id):
+        with transaction.atomic():
+            member = self.get_member(request, member_id)
+            serializer = self.get_serializer(member, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            if member.role != Membership.Role.ADMIN:
+                cancel_invitations_sent_by(member)
+        return Response({"success": True, "data": serializer.data})
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "MemberRemovedResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def delete(self, request, member_id):
+        with transaction.atomic():
+            member = self.get_member(request, member_id)
+            member.soft_delete()
+            cancel_invitations_sent_by(member)
+        return Response({"success": True, "message": "Member removed."})

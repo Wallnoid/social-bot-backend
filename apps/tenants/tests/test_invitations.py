@@ -11,14 +11,13 @@ from django.core.mail.backends.smtp import EmailBackend
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.generators import SchemaGenerator
-from rest_framework.test import APIClient
 
 from apps.tenants.models import Invitation, Membership, Tenant
+from apps.tenants.tests.helpers import PASSWORD, add_member, client_for
 
 User = get_user_model()
 
 INVITATIONS_URL = "/api/v1/tenants/invitations/"
-PASSWORD = "StrongPass123!"
 
 
 @pytest.fixture
@@ -26,26 +25,9 @@ def tenant(db):
     return Tenant.objects.create(name="Acme Dental")
 
 
-def member_client(tenant, role, email="member@acme.test"):
-    """Return an API client logged in as a member of the tenant with that role."""
-    user = User.objects.create_user(email=email, password=PASSWORD)
-    Membership.objects.create(tenant=tenant, user=user, role=role)
-    api = APIClient()
-    response = api.post(
-        "/api/v1/accounts/token/",
-        {"email": email, "password": PASSWORD},
-        format="json",
-    )
-    api.credentials(
-        HTTP_AUTHORIZATION=f"Bearer {response.data['access']}",
-        HTTP_X_TENANT_ID=str(tenant.id),
-    )
-    return api
-
-
 @pytest.fixture
 def admin_client(tenant):
-    return member_client(tenant, Membership.Role.ADMIN)
+    return client_for(add_member(tenant, "member@acme.test", Membership.Role.ADMIN))
 
 
 def invite(api, email="new@acme.test", role="agent"):
@@ -90,7 +72,7 @@ def test_invitation_expiry_comes_from_the_env_setting(admin_client, settings, ma
 
 
 def test_agent_cannot_invite(tenant, mailoutbox):
-    api = member_client(tenant, Membership.Role.AGENT)
+    api = client_for(add_member(tenant, "member@acme.test", Membership.Role.AGENT))
 
     response = invite(api)
 
@@ -100,7 +82,7 @@ def test_agent_cannot_invite(tenant, mailoutbox):
 
 
 def test_supervisor_cannot_invite(tenant, mailoutbox):
-    api = member_client(tenant, Membership.Role.SUPERVISOR)
+    api = client_for(add_member(tenant, "member@acme.test", Membership.Role.SUPERVISOR))
 
     response = invite(api)
 

@@ -11,12 +11,12 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.tenants.models import Invitation, Membership, Tenant
+from apps.tenants.tests.helpers import PASSWORD, log_in
 
 User = get_user_model()
 
 LOOKUP_URL = "/api/v1/tenants/invitations/lookup/"
 ACCEPT_URL = "/api/v1/tenants/invitations/accept/"
-PASSWORD = "StrongPass123!"
 INVALID_LINK_MESSAGE = "The invitation is invalid or has expired."
 
 
@@ -169,15 +169,6 @@ def test_new_person_cannot_omit_the_name_or_the_password(api, invitation):
     assert response.status_code == 400
     assert {"first_name", "last_name", "new_password"} <= set(response.data["errors"])
     assert not User.objects.filter(email="new@acme.test").exists()
-
-
-def log_in(api, email, **headers):
-    response = api.post(
-        "/api/v1/accounts/token/",
-        {"email": email, "password": PASSWORD},
-        format="json",
-    )
-    api.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}", **headers)
 
 
 def test_existing_user_logged_in_with_the_invited_email_joins(api, invitation, tenant):
