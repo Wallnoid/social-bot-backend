@@ -113,5 +113,10 @@ class Invitation(BaseModel):
     )
     expires_at = models.DateTimeField(default=default_invitation_expiry)
 
+    @classmethod
+    def pending(cls):
+        """Invitations that can still be accepted: not used, cancelled or expired."""
+        return cls.objects.filter(expires_at__gt=timezone.now())
+
     def __str__(self):
         return f"{self.email} - {self.tenant} ({self.role})"

@@ -5,7 +5,6 @@ Serializers for the tenants app.
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import NotAuthenticated, PermissionDenied
 
@@ -14,12 +13,23 @@ from .models import Invitation, Membership
 User = get_user_model()
 
 
+class InviterSerializer(serializers.ModelSerializer):
+    """Who sent an invitation."""
+
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "email"]
+        read_only_fields = fields
+
+
 class InvitationSerializer(serializers.ModelSerializer):
     """Serializer for inviting a person; the token is never returned."""
 
+    invited_by = InviterSerializer(read_only=True)
+
     class Meta:
         model = Invitation
-        fields = ["id", "email", "role", "expires_at"]
+        fields = ["id", "email", "role", "invited_by", "expires_at"]
         read_only_fields = ["id", "expires_at"]
 
     def validate_email(self, value):
@@ -28,11 +38,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             tenant=self.context["tenant"], user__email__iexact=email
         ).exists():
             raise serializers.ValidationError("This person is already a member of this business.")
-        if Invitation.objects.filter(
-            tenant=self.context["tenant"],
-            email__iexact=email,
-            expires_at__gt=timezone.now(),
-        ).exists():
+        if Invitation.pending().filter(tenant=self.context["tenant"], email__iexact=email).exists():
             raise serializers.ValidationError(
                 "This email already has a pending invitation to this business."
             )
@@ -59,11 +65,7 @@ class InvitationLookupSerializer(serializers.Serializer):
     lock_invitation = False
 
     def validate(self, attrs):
-        invitations = Invitation.objects.filter(
-            token=attrs["token"],
-            expires_at__gt=timezone.now(),
-            tenant__is_deleted=False,
-        )
+        invitations = Invitation.pending().filter(token=attrs["token"], tenant__is_deleted=False)
         if self.lock_invitation:
             invitations = invitations.select_for_update(of=("self",))
         invitation = invitations.first()

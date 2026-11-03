@@ -59,12 +59,32 @@ class CurrentTenantView(APIView):
 
 class InvitationCreateView(generics.GenericAPIView):
     """
+    GET /api/v1/tenants/invitations/ → the pending invitations of the active business.
     POST /api/v1/tenants/invitations/ → invite a person to the active business.
     """
 
     serializer_class = InvitationSerializer
     permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
-    throttle_classes = [BurstUserRateThrottle]
+
+    def get_throttles(self):
+        # Only inviting sends email, so only inviting gets the tight limit
+        if self.request.method == "POST":
+            return [BurstUserRateThrottle()]
+        return super().get_throttles()
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "InvitationListResponse",
+                {"success": serializers.BooleanField(), "data": InvitationSerializer(many=True)},
+            )
+        }
+    )
+    def get(self, request):
+        invitations = (
+            Invitation.pending().filter(tenant=request.tenant).select_related("invited_by")
+        )
+        return Response({"success": True, "data": self.get_serializer(invitations, many=True).data})
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data, context={"tenant": request.tenant})
@@ -80,6 +100,33 @@ class InvitationCreateView(generics.GenericAPIView):
             {"success": True, "data": serializer.data},
             status=status.HTTP_201_CREATED,
         )
+
+
+class InvitationDetailView(generics.GenericAPIView):
+    """
+    DELETE /api/v1/tenants/invitations/<id>/ → cancel a pending invitation.
+    """
+
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "InvitationCancelledResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def delete(self, request, invitation_id):
+        # Accepting locks the invitation too, so only one of the two can win
+        with transaction.atomic():
+            lock_business_as_admin(request)
+            invitation = get_object_or_404(
+                Invitation.pending().select_for_update().filter(tenant=request.tenant),
+                pk=invitation_id,
+            )
+            invitation.soft_delete()
+        return Response({"success": True, "message": "Invitation cancelled."})
 
 
 class InvitationLookupView(generics.GenericAPIView):
@@ -168,6 +215,19 @@ def other_members(request):
     )
 
 
+def lock_business_as_admin(request):
+    """
+    Call inside a transaction, before an admin-only change. The lock makes the
+    admins of a business act one at a time, and the role is read again under it,
+    so an admin demoted while their request was on its way cannot act.
+    """
+    get_object_or_404(Tenant.objects.select_for_update(no_key=True), pk=request.tenant.pk)
+    if not Membership.objects.filter(
+        tenant=request.tenant, user=request.user, role=Membership.Role.ADMIN
+    ).exists():
+        raise PermissionDenied
+
+
 def cancel_invitations_sent_by(member):
     """Keep someone who lost admin access from coming back through their own invitations."""
     for invitation in Invitation.objects.filter(tenant=member.tenant, invited_by=member.user):
@@ -206,15 +266,8 @@ class MemberDetailView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
 
     def get_member(self, request, member_id):
-        """
-        Call inside a transaction. The lock makes admins of a business act one at
-        a time, so two admins demoting each other cannot leave it without an admin.
-        """
-        get_object_or_404(Tenant.objects.select_for_update(no_key=True), pk=request.tenant.pk)
-        if not Membership.objects.filter(
-            tenant=request.tenant, user=request.user, role=Membership.Role.ADMIN
-        ).exists():
-            raise PermissionDenied
+        """Call inside a transaction, so two admins demoting each other leave one admin."""
+        lock_business_as_admin(request)
         return get_object_or_404(other_members(request), pk=member_id)
 
     @extend_schema(
