@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from wanps.messaging.models import App
 
 from apps.tenants.models import Membership, Tenant
 
@@ -127,6 +128,7 @@ def test_admin_edit_form_shows_soft_delete_fields_last(staff_client):
         "name",
         "industry",
         "description",
+        "meta_app",
         "is_deleted",
         "deleted_at",
     ]
@@ -264,3 +266,25 @@ def test_set_password_email_states_hours_when_link_lasts_less_than_a_day(
     )
 
     assert "válido por 12 horas" in mailoutbox[0].body
+
+
+@pytest.mark.django_db
+def test_admin_sets_the_business_own_meta_app(staff_client):
+    tenant = Tenant.objects.create(name="Acme Dental")
+    app = App.objects.create(name="Acme's own app", app_secret="s", verify_token="v")
+
+    response = staff_client.post(
+        reverse("admin:tenants_tenant_change", args=[tenant.pk]),
+        {
+            "name": "Acme Dental",
+            "industry": "",
+            "description": "",
+            "meta_app": str(app.pk),
+            "memberships-TOTAL_FORMS": "0",
+            "memberships-INITIAL_FORMS": "0",
+        },
+    )
+
+    assert response.status_code == 302
+    tenant.refresh_from_db()
+    assert tenant.meta_app == app

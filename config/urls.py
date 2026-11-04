@@ -15,6 +15,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 from health_check.views import HealthCheckView
+from wanps.messaging.meta import MetaWebhookView
 
 urlpatterns = [
     # Redirect root to documentation
@@ -25,7 +26,19 @@ urlpatterns = [
     path("api/v1/", include([
         path("accounts/", include("apps.accounts.urls")),
         path("tenants/", include("apps.tenants.urls")),
+        path("channels/", include("apps.channels.urls")),
     ])),
+    # Meta webhook (WhatsApp, Messenger, Instagram), served by wanps-core. Only the
+    # per-app route: the one without a key has no app secret to check signatures.
+    path(
+        "webhooks/meta/",
+        include(
+            (
+                [path("<str:webhook_key>/", MetaWebhookView.as_view(), name="meta-webhook")],
+                "messaging",
+            )
+        ),
+    ),
     # API Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(

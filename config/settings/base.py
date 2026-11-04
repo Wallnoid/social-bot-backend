@@ -10,6 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # =============================================================================
 # PATH CONFIGURATION
@@ -69,12 +70,17 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "health_check",
     "django_celery_beat",
+    "wanps.messaging",
+    "wanps.whatsapp",
+    "wanps.messenger",
+    "wanps.instagram",
 ]
 
 LOCAL_APPS = [
     "apps.core",
     "apps.accounts",
     "apps.tenants",
+    "apps.channels",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -272,6 +278,13 @@ FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
 
 # Seconds a password link (e.g. the one emailed to a new admin) stays valid
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24 * 7)
+
+# Channels (wanps-core): many accounts stored in the database, secrets encrypted with this key
+WANPS_MULTITENANT = True
+WANPS_ENCRYPTION_KEY = env("WANPS_ENCRYPTION_KEY", default="")
+if not WANPS_ENCRYPTION_KEY:
+    # Fail at startup, not on the first save of a token or Meta App secret
+    raise ImproperlyConfigured("Set WANPS_ENCRYPTION_KEY in .env (see .env.example).")
 
 # Seconds an invitation to join a business stays valid
 INVITATION_TIMEOUT = env.int("INVITATION_TIMEOUT", default=60 * 60 * 24 * 7)
