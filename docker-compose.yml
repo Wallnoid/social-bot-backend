@@ -54,6 +54,9 @@ services:
     build:
       context: .
       target: production
+      secrets:
+        - source: github_token
+          target: github_token
     restart: unless-stopped
     volumes:
       - static_files:/app/staticfiles
@@ -80,6 +83,9 @@ services:
     build:
       context: .
       target: production
+      secrets:
+        - source: github_token
+          target: github_token
     restart: unless-stopped
     command: celery -A config worker -l info --concurrency=2
     env_file:
@@ -102,6 +108,9 @@ services:
     build:
       context: .
       target: production
+      secrets:
+        - source: github_token
+          target: github_token
     restart: unless-stopped
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file:
@@ -116,6 +125,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+# Read-only GitHub token to install the private wanps-core repo (never committed)
+secrets:
+  github_token:
+    file: .secrets/github-token
 
 volumes:
   postgres_data:

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ==============================================================================
 # Stage 1: Base image with dependencies
 # ==============================================================================
@@ -15,13 +16,20 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
+        git \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
+# wanps-core lives in a private GitHub repo: the token arrives as a build secret,
+# is used only by this step and never ends up in an image layer
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+RUN --mount=type=secret,id=github_token,required=true \
+    token="$(cat /run/secrets/github_token)" \
+    && git config --global url."https://x-access-token:${token}@github.com/".insteadOf "https://github.com/" \
+    && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir . \
+    && rm -f /root/.gitconfig
 
 # ==============================================================================
 # Stage 2: Production image
