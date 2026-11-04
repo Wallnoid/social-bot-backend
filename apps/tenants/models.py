@@ -40,6 +40,14 @@ class Tenant(BaseModel):
     name = models.CharField(max_length=255)
     industry = models.CharField(max_length=30, choices=Industry.choices, blank=True)
     description = models.TextField(blank=True)
+    meta_app = models.ForeignKey(
+        "messaging.App",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="tenants",
+        help_text="The business's own Meta App. Empty uses the shared Social Bot app.",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = "business"

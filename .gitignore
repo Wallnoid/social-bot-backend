@@ -33,6 +33,7 @@ media/
 # Environment Variables
 # ==============================================================================
 .env
+.secrets/
 .env.local
 .env.production
 

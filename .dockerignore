@@ -1,0 +1,13 @@
+# Kept out of the build context so they never end up in an image
+.secrets/
+.env
+.env.*
+!.env.example
+.git/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+logs/
+media/

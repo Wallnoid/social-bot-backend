@@ -34,9 +34,7 @@ class TenantCreateForm(forms.ModelForm):
         email = self.cleaned_data["admin_email"]
         existing = User.objects.filter(email__iexact=email).first()
         if existing is not None and not existing.is_active:
-            raise forms.ValidationError(
-                "This user is deactivated and cannot be the first admin."
-            )
+            raise forms.ValidationError("This user is deactivated and cannot be the first admin.")
         return email
 
 
@@ -67,7 +65,7 @@ class TenantAdmin(admin.ModelAdmin):
     def get_fields(self, request, obj=None):
         if obj is None:
             return super().get_fields(request, obj)
-        return ["name", "industry", "description", "is_deleted", "deleted_at"]
+        return ["name", "industry", "description", "meta_app", "is_deleted", "deleted_at"]
 
     def get_inline_instances(self, request, obj=None):
         if obj is None:
@@ -94,6 +92,5 @@ class TenantAdmin(admin.ModelAdmin):
                 logger.exception("Could not send set-password email to %s", user.pk)
                 messages.error(
                     request,
-                    f"The business was created, but the email to {user.email} "
-                    "could not be sent.",
+                    f"The business was created, but the email to {user.email} could not be sent.",
                 )
