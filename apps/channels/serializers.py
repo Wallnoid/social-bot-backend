@@ -35,6 +35,23 @@ class ConnectAccountSerializer(serializers.ModelSerializer):
         ]
 
 
+class UpdateAccountSerializer(serializers.ModelSerializer):
+    """What a business admin can change on a connected account."""
+
+    class Meta:
+        model = Account
+        fields = ["name", "access_token"]
+        # Like when connecting: the token goes in encrypted and never comes back out
+        extra_kwargs = {"access_token": {"write_only": True, "allow_blank": False}}
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        # Only the edited columns: wanps-core may be changing the rest of the account right now
+        instance.save(update_fields=[*validated_data, "updated_at"])
+        return instance
+
+
 class ChannelAccountSerializer(serializers.ModelSerializer):
     """A connected account as the business sees it: never its token."""
 
