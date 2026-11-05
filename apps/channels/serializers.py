@@ -20,8 +20,11 @@ class ConnectAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = ["channel", "name", "external_id", "business_id", "access_token"]
-        # The token goes in and is stored encrypted by wanps-core; it never comes back out
-        extra_kwargs = {"access_token": {"write_only": True}}
+        # The token goes in and is stored encrypted by wanps-core; it never comes back out.
+        # wanps-core lets it be empty, but an account without a token cannot send anything
+        extra_kwargs = {
+            "access_token": {"write_only": True, "required": True, "allow_blank": False}
+        }
         # Same answer whoever owns it, so it never tells which business has the account
         validators = [
             UniqueTogetherValidator(

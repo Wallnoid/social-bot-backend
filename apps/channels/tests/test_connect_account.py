@@ -261,3 +261,16 @@ def test_api_docs_describe_connecting_an_account_without_its_token_in_the_respon
     data = components[created["properties"]["data"]["$ref"].rsplit("/", 1)[1]]
     assert "access_token" not in data["properties"]
     assert data["properties"]["id"]["format"] == "uuid"
+
+
+def test_an_account_without_an_access_token_is_rejected(admin_client):
+    SharedMetaApp.objects.create(app=add_app("Social Bot"))
+    data = {"channel": "whatsapp", "name": "Front desk", "external_id": "111", "business_id": "9"}
+
+    missing = admin_client.post(ACCOUNTS_URL, data, format="json")
+    empty = connect(admin_client, access_token="")
+
+    assert missing.status_code == empty.status_code == 400
+    assert "access_token" in missing.data["errors"]
+    assert "access_token" in empty.data["errors"]
+    assert not Account.objects.exists()
