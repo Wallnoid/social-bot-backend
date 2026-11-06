@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: the repo currently holds the base template (`core`, `accounts`). Everything marked **planned** does not exist yet; it records the agreed direction, not implemented code.
+> Status: the repo holds the base template (`core`, `accounts`) plus `tenants`, `channels` and the read side of `conversations`. Everything marked **planned** does not exist yet; it records the agreed direction, not implemented code.
 
 ## Overview
 ```
@@ -25,8 +25,9 @@ social-bot-backend (Django + DRF) ──── PostgreSQL
 | `config` | Settings, URLs, Celery | exists |
 | `apps.core` | Base model, pagination, permissions, throttling, errors, logging, health | exists |
 | `apps.accounts` | Users, JWT auth | exists |
-| tenants | Tenant (business), membership, roles, link to `wanps-core` accounts | planned |
-| conversations (inbox) | List chats, read messages, reply as a person, pause/resume bot; built on `wanps.inbox` | planned |
+| `apps.tenants` | Tenant (business), membership, roles, invitations | exists |
+| `apps.channels` | Connect, list, edit and disconnect a business's channel accounts; the link from each `wanps-core` account to its business | exists |
+| `apps.conversations` (inbox) | List chats and read messages, one inbox per channel, built on `wanps.inbox`. Reply as a person, pause/resume the bot and live updates are planned | partly exists |
 | contacts + pipeline (CRM) | Contacts (clients), pipeline stages, link to conversations | planned |
 | appointments (calendar) | Appointments linked to contacts | planned |
 | notifications | Notify users of new messages, appointments and pipeline changes | planned |
@@ -39,19 +40,18 @@ App names are provisional; decide them when each one is built.
 - **Auth:** email + password → JWT access/refresh pair (`/api/v1/accounts/token/`); logout blacklists the refresh token.
 
 ## External integrations
-- `wanps-core` (sibling repo `../wanps-core`): channels, messaging tables, AI handlers. Not yet a dependency in `pyproject.toml`; installing it (editable or from GitHub) and the settings it needs (`WANPS_MULTITENANT`, `WANPS_ENCRYPTION_KEY`, Meta App settings) are part of the first story that needs it.
+- `wanps-core` (sibling repo `../wanps-core`): channels, messaging tables, AI handlers. Installed from its private GitHub repo, pinned to a release tag (Docker builds get the token as a build secret). Settings: `WANPS_MULTITENANT` and `WANPS_ENCRYPTION_KEY`; the Meta Apps are stored in the database.
 - Meta: WhatsApp Business API (Cloud), Messenger, Instagram DMs, through `wanps-core`.
 - LLM providers (OpenAI, Anthropic, Gemini) through `wanps.ai`, configured per account.
 
 ## Technical decisions
 - **Multi-tenant via `wanps-core`'s multi-tenant mode:** many channel accounts in one deployment, each with its own credentials and bot.
-- **Single entry point:** one API for the frontend keeps auth, roles and tenant isolation in one place. `wanps.inbox` is installed (decided) and served by this backend, not by a separate inbox app.
+- **Single entry point:** one API for the frontend keeps auth, roles and tenant isolation in one place. `wanps.inbox` is installed (decided) and its logic is served by this backend, not by a separate inbox app.
 - **Template base kept:** split settings, UUID PKs, soft delete, JWT and Celery come from the original template and are not being redesigned.
 
 ## Open decisions
 - Tenant isolation strategy (shared tables with a tenant foreign key vs. other).
 - Permission model beyond the three initial roles.
-- How `wanps.inbox` keys and this backend's JWT roles/tenants fit together (inbox keys are per account and bypass user login).
 
 ## Not needed (decided)
 - Offline/sync, multi-language and multi-currency: not required for now.
