@@ -27,6 +27,8 @@ dependencies = [
     "redis>=5.0",
     "celery>=5.4",
     "django-celery-beat>=2.7",
+    # kombu 5.7 imports it in its Redis transport but no longer requires it
+    "packaging",
 
     # Health Checks
     "django-health-check>=3.18",
