@@ -92,10 +92,26 @@ class ChannelAccountListView(generics.GenericAPIView):
 
 
 class ChannelAccountDetailView(generics.GenericAPIView):
-    """PATCH /api/v1/channels/accounts/<id>/ → edit an account of the active business."""
+    """
+    PATCH /api/v1/channels/accounts/<id>/ → edit an account of the active business.
+    DELETE /api/v1/channels/accounts/<id>/ → disconnect it.
+    """
 
     serializer_class = UpdateAccountSerializer
     permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    def get_locked_link(self, request, account_id):
+        """
+        Call inside a transaction: the row stays locked, so an edit and a disconnection of
+        the same account never run together. Only this business's accounts are looked up:
+        another business's (or a disconnected one) is simply not found.
+        """
+        links = (
+            ChannelAccount.objects.select_for_update()
+            .filter(tenant=request.tenant)
+            .select_related("account")
+        )
+        return get_object_or_404(links, pk=account_id)
 
     @extend_schema(
         responses={
@@ -106,10 +122,41 @@ class ChannelAccountDetailView(generics.GenericAPIView):
         }
     )
     def patch(self, request, account_id):
-        # Only this business's accounts are looked up: another business's is simply not found
-        links = ChannelAccount.objects.filter(tenant=request.tenant).select_related("account")
-        link = get_object_or_404(links, pk=account_id)
-        serializer = self.get_serializer(link.account, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        with transaction.atomic():
+            link = self.get_locked_link(request, account_id)
+            serializer = self.get_serializer(link.account, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
         return Response({"success": True, "data": ChannelAccountSerializer(link).data})
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "ChannelAccountDisconnectedResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def delete(self, request, account_id):
+        with transaction.atomic():
+            link = self.get_locked_link(request, account_id)
+            # The wanps-core account stays, because its messages reference it: it is archived.
+            # The webhook finds accounts by channel and id even when inactive, so the id is
+            # freed (its events are ignored and the same number can be connected again) but
+            # kept readable, cut to fit the 64 characters of the field.
+            account = link.account
+            account.is_active = False
+            account.access_token = ""
+            account.ai_api_key = ""
+            account.external_id = f"{account.external_id[:40]}#disconnected-{account.pk}"
+            account.save(
+                update_fields=[
+                    "is_active",
+                    "access_token",
+                    "ai_api_key",
+                    "external_id",
+                    "updated_at",
+                ]
+            )
+            link.soft_delete()
+        return Response({"success": True, "message": "Account disconnected."})
