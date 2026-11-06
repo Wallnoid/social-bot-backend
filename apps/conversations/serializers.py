@@ -64,3 +64,10 @@ class ChatMessagesSerializer(serializers.Serializer):
     paused_by = serializers.CharField()
     messages = InboxMessageSerializer(many=True)
     has_more = serializers.BooleanField()
+
+
+class SendMessageSerializer(serializers.Serializer):
+    """A reply typed by a person: the account of the chat and the text."""
+
+    account = serializers.UUIDField()
+    text = serializers.CharField()

@@ -4,7 +4,7 @@ URL configuration for the inbox: one inbox per channel.
 
 from django.urls import re_path
 
-from .views import ConversationListView, MessageListView
+from .views import ConversationListView, MessageListView, SendMessageView
 
 app_name = "conversations"
 
@@ -19,5 +19,10 @@ urlpatterns = [
         rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/messages/$",
         MessageListView.as_view(),
         name="message-list",
+    ),
+    re_path(
+        rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/send/$",
+        SendMessageView.as_view(),
+        name="send-message",
     ),
 ]
