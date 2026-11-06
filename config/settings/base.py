@@ -249,6 +249,13 @@ SIMPLE_JWT = {
     "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
 }
 
+# The refresh token travels in an httpOnly cookie, never in a response body. The cookie only
+# goes to the authentication routes and to the API host (no Domain), so the frontend and the
+# API must share a base domain (app.example.com / api.example.com).
+AUTH_REFRESH_COOKIE_NAME = "refresh_token"
+AUTH_REFRESH_COOKIE_PATH = "/api/v1/accounts/"
+AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=False)
+
 # =============================================================================
 # DRF SPECTACULAR (API DOCUMENTATION)
 # =============================================================================
