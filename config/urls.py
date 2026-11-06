@@ -11,6 +11,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from drf_spectacular.views import (
     SpectacularAPIView,
+    SpectacularJSONAPIView,
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
@@ -42,6 +43,8 @@ urlpatterns = [
     ),
     # API Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    # The same schema as JSON: the frontend generates its types from this address
+    path("api/openapi.json", SpectacularJSONAPIView.as_view(), name="openapi-json"),
     path(
         "api/docs/",
         SpectacularSwaggerView.as_view(url_name="schema"),
