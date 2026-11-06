@@ -24,12 +24,16 @@ Channel connections (webhooks, sending, conversations, AI handlers) come from `w
 - `config/`: settings (`base.py`, `local.py`, `production.py`), root URLs, Celery, WSGI/ASGI
 - `apps/core/`: shared base model (UUID, timestamps, soft delete), pagination, permissions, throttling, exception handler, request logging, health checks
 - `apps/accounts/`: custom email-based `User`, JWT auth endpoints
-- Planned apps (not created yet): tenants, conversations/inbox, contacts + pipeline (CRM), appointments (calendar), notifications. Details in `docs/architecture.md`.
+- `apps/tenants/`: businesses, memberships, roles, invitations
+- `apps/channels/`: channel accounts of each business (a link to the `wanps-core` account) and the Meta Apps they connect to
+- `apps/conversations/`: the inbox, one per channel, read through `wanps.inbox`
+- Planned apps (not created yet): contacts + pipeline (CRM), appointments (calendar), notifications. Details in `docs/architecture.md`.
 
 ## Business rules
 Summary of the most critical ones (full detail in the imported file below):
 - Everything is scoped to a tenant; no query, handler or reply may cross tenants.
-- The frontend never calls Meta; every action goes through this backend's API. `wanps.inbox` is installed and served by this backend.
+- The frontend never calls Meta; every action goes through this backend's API. `wanps.inbox` is installed and its logic is served by this backend.
+- The inbox is one per channel under `/api/v1/inbox/<channel>/`; it reads through `wanps.inbox.services` with a `TenantInbox` limited to the active business's connected accounts, and `wanps.inbox`'s own keyed API is never mounted.
 - Initial roles: agent, supervisor, admin.
 - Appointments belong to a contact; contacts live in a pipeline.
 - Channel secrets are stored encrypted and never returned by the API.

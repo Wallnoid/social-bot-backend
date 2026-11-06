@@ -74,6 +74,7 @@ THIRD_PARTY_APPS = [
     "wanps.whatsapp",
     "wanps.messenger",
     "wanps.instagram",
+    "wanps.inbox",
 ]
 
 LOCAL_APPS = [
@@ -81,6 +82,7 @@ LOCAL_APPS = [
     "apps.accounts",
     "apps.tenants",
     "apps.channels",
+    "apps.conversations",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
