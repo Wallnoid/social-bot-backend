@@ -9,7 +9,7 @@ import requests
 from django.http import Http404
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -175,6 +175,16 @@ class ReplyWindowClosed(APIException):
     default_code = "window_closed"
 
 
+USE_HUMAN_AGENT = (
+    "The 24-hour window is closed: reply as a person with the human-agent option "
+    "(up to 7 days after the client's last message)."
+)
+# Also the case of a contact that never wrote: there is no message of the client either
+HUMAN_AGENT_EXPIRED = (
+    "There is no message from the client in the last 7 days: it can no longer be answered."
+)
+
+
 class MessageNotDelivered(APIException):
     status_code = status.HTTP_502_BAD_GATEWAY
     default_detail = (
@@ -200,17 +210,29 @@ class SendMessageView(APIView):
                 "SentMessageResponse",
                 {"success": serializers.BooleanField(), "data": InboxMessageSerializer()},
             ),
-            400: OpenApiResponse(description="Empty text, or the account is missing or malformed."),
+            400: OpenApiResponse(
+                description="Empty text, the account is missing or malformed, or the "
+                "human-agent option is used on WhatsApp."
+            ),
             404: OpenApiResponse(
                 description="The account is not one of the business's on this channel."
             ),
-            409: OpenApiResponse(description="The 24-hour window is closed."),
+            409: OpenApiResponse(
+                description="The 24-hour window is closed. On Messenger and Instagram, use the "
+                "human-agent option; if it is used and more than 7 days have passed, nothing "
+                "can be sent."
+            ),
             502: OpenApiResponse(description="The channel could not deliver the message."),
         },
     )
     def post(self, request, channel, contact_id):
         body = SendMessageSerializer(data=request.data)
         body.is_valid(raise_exception=True)
+        human_agent = body.validated_data["human_agent"]
+        if human_agent and channel == "whatsapp":
+            raise ValidationError(
+                {"human_agent": "This option only exists on Messenger and Instagram."}
+            )
         link, inbox = chat_scope(request, channel, body.validated_data["account"])
         try:
             sent = send_message(
@@ -218,11 +240,18 @@ class SendMessageView(APIView):
                 contact_id,
                 account=link.account,
                 text=body.validated_data["text"],
+                human_agent=human_agent,
                 sent_by=request.user.full_name,
                 channel=channel,
             )
         except WindowClosed:
-            raise ReplyWindowClosed from None
+            if channel == "whatsapp":
+                raise ReplyWindowClosed from None
+            # On these channels the option decides what is left: if it was already used,
+            # the 7 days are over; if not, it can still be used
+            raise ReplyWindowClosed(
+                HUMAN_AGENT_EXPIRED if human_agent else USE_HUMAN_AGENT
+            ) from None
         except (WhatsAppError, MetaAPIError, requests.RequestException) as exc:
             # Only the kind of error: its text can carry the URL with the access token
             logger.warning(
