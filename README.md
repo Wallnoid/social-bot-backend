@@ -208,6 +208,21 @@ make docker-down     # Stop Docker services
 make docker-logs     # Follow logs
 ```
 
+### Demo data for the frontend (development only)
+
+Try every screen without real Meta accounts. Both tools live in `apps/devtools`, which is only installed with the local settings: production does not have them.
+
+```bash
+# SEED_DEMO_PASSWORD in .env: the password of the demo users (not a real one)
+docker compose exec web python manage.py seed_demo                        # create the demo data
+docker compose exec web python manage.py seed_demo --reset                # delete what was seeded and create it again
+docker compose exec web python manage.py seed_demo --member you@example.com  # also make that user admin of both demo businesses
+```
+
+- It creates two businesses (`demo-Acme Dental` and `demo-Rival Clinic`) with channel accounts, chats of every kind (open and closed 24-hour window, bot active and paused, a chat of 130 messages, more than 150 chats on WhatsApp) and users: `demo-admin@demo.test`, `demo-supervisor@demo.test`, `demo-agent@demo.test`, and `demo-multi@demo.test`, who belongs to both businesses with a different role in each.
+- Everything carries the `demo-` prefix, so `--reset` never touches real data. It refuses to run unless `DEBUG` is on.
+- `META_FAKE=true` in `.env` answers the messages sent to Meta without calling it: the message is saved and shown as sent. A text with `#fail` is rejected, to try the delivery error (502). Sending text to a closed-window chat answers 409 by itself. Pausing or resuming the bot never calls Meta.
+
 ## 🏗 Adding a New App
 
 1. Create the app directory:

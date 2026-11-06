@@ -27,6 +27,7 @@ Channel connections (webhooks, sending, conversations, AI handlers) come from `w
 - `apps/tenants/`: businesses, memberships, roles, invitations
 - `apps/channels/`: channel accounts of each business (a link to the `wanps-core` account) and the Meta Apps they connect to
 - `apps/conversations/`: the inbox, one per channel, read through `wanps.inbox`
+- `apps/devtools/`: development only (listed in the local settings, never in production): the `seed_demo` command and the fake Meta (`META_FAKE=true`)
 - Planned apps (not created yet): contacts + pipeline (CRM), appointments (calendar), notifications. Details in `docs/architecture.md`.
 
 ## Business rules
