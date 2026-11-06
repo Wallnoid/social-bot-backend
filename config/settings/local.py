@@ -36,6 +36,13 @@ DATABASES = {
 #     "django_extensions",
 # ]
 
+# Seed commands and the fake Meta, for trying the frontend without real accounts. This app is
+# only listed here: production does not have it.
+INSTALLED_APPS += ["apps.devtools"]
+
+# Answer the messages sent to Meta without calling it (see apps/devtools/fake_meta.py)
+META_FAKE = env.bool("META_FAKE", default=False)
+
 # Add browsable API renderer in development
 REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (  # noqa: F405
     "rest_framework.renderers.JSONRenderer",
