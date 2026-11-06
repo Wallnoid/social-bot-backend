@@ -71,3 +71,20 @@ class SendMessageSerializer(serializers.Serializer):
 
     account = serializers.UUIDField()
     text = serializers.CharField()
+
+
+class PauseBotSerializer(serializers.Serializer):
+    """Pause the bot in a chat (for some minutes or until resumed) or resume it."""
+
+    account = serializers.UUIDField()
+    paused = serializers.BooleanField()
+    minutes = serializers.IntegerField(min_value=1, max_value=10080, required=False)
+
+
+class BotStateSerializer(serializers.Serializer):
+    account = InboxAccountSerializer()
+    channel = serializers.CharField()
+    contact_id = serializers.CharField()
+    bot_paused = serializers.BooleanField()
+    bot_paused_until = serializers.DateTimeField(allow_null=True)
+    paused_by = serializers.CharField()

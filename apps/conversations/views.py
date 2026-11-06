@@ -13,7 +13,13 @@ from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from wanps.inbox.services import WindowClosed, get_messages, list_conversations, send_message
+from wanps.inbox.services import (
+    WindowClosed,
+    get_messages,
+    list_conversations,
+    send_message,
+    set_bot_paused,
+)
 from wanps.messaging.meta_messaging import MetaAPIError
 from wanps.messaging.models import Message
 from wanps.whatsapp.client import WhatsAppError
@@ -22,11 +28,13 @@ from apps.channels.models import ChannelAccount
 from apps.tenants.permissions import HasActiveTenant
 
 from .serializers import (
+    BotStateSerializer,
     ChatMessagesSerializer,
     ConversationSerializer,
     ConversationsQuerySerializer,
     InboxMessageSerializer,
     MessagesQuerySerializer,
+    PauseBotSerializer,
     SendMessageSerializer,
 )
 
@@ -68,6 +76,15 @@ def pick_link(links, account_id):
         if link.id == account_id:
             return link
     raise Http404
+
+
+def chat_scope(request, channel, account_id):
+    """
+    The account of a chat, and what `wanps.inbox` may read through it. Every action on a
+    chat starts here, so the business scope is applied in a single place.
+    """
+    link = pick_link(business_links(request, channel), account_id)
+    return link, TenantInbox([link.account])
 
 
 def account_of(link):
@@ -139,9 +156,9 @@ class MessageListView(APIView):
     def get(self, request, channel, contact_id):
         query = MessagesQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
-        link = pick_link(business_links(request, channel), query.validated_data["account"])
+        link, inbox = chat_scope(request, channel, query.validated_data["account"])
         found = get_messages(
-            TenantInbox([link.account]),
+            inbox,
             contact_id,
             account=link.account,
             channel=channel,
@@ -194,10 +211,10 @@ class SendMessageView(APIView):
     def post(self, request, channel, contact_id):
         body = SendMessageSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        link = pick_link(business_links(request, channel), body.validated_data["account"])
+        link, inbox = chat_scope(request, channel, body.validated_data["account"])
         try:
             sent = send_message(
-                TenantInbox([link.account]),
+                inbox,
                 contact_id,
                 account=link.account,
                 text=body.validated_data["text"],
@@ -219,3 +236,45 @@ class SendMessageView(APIView):
             {"success": True, "data": InboxMessageSerializer(sent).data},
             status=status.HTTP_201_CREATED,
         )
+
+
+class BotView(APIView):
+    """POST /api/v1/inbox/<channel>/conversations/<contact>/bot/ → pause or resume the bot."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+
+    @extend_schema(
+        description=(
+            "Pauses the bot in the chat, for some minutes (up to one week) or until it is "
+            "resumed, or resumes it. The chat shows who paused it and until when."
+        ),
+        request=PauseBotSerializer,
+        responses={
+            200: inline_serializer(
+                "BotStateResponse",
+                {"success": serializers.BooleanField(), "data": BotStateSerializer()},
+            ),
+            400: OpenApiResponse(description="The time or the body is not valid."),
+            404: OpenApiResponse(
+                description="The account is not one of the business's on this channel, or the chat does not exist."
+            ),
+        },
+    )
+    def post(self, request, channel, contact_id):
+        body = PauseBotSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        link, inbox = chat_scope(request, channel, body.validated_data["account"])
+        # Only chats that exist: otherwise anyone could create records for made-up ids
+        if not inbox.messages(link.account).filter(contact_id=contact_id, channel=channel).exists():
+            raise Http404
+        state = set_bot_paused(
+            inbox,
+            contact_id,
+            link.account,
+            paused=body.validated_data["paused"],
+            minutes=body.validated_data.get("minutes"),
+            paused_by=request.user.full_name,
+            channel=channel,
+        )
+        data = BotStateSerializer({**state, "account": account_of(link)}).data
+        return Response({"success": True, "data": data})
