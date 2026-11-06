@@ -78,6 +78,15 @@ def pick_link(links, account_id):
     raise Http404
 
 
+def chat_scope(request, channel, account_id):
+    """
+    The account of a chat, and what `wanps.inbox` may read through it. Every action on a
+    chat starts here, so the business scope is applied in a single place.
+    """
+    link = pick_link(business_links(request, channel), account_id)
+    return link, TenantInbox([link.account])
+
+
 def account_of(link):
     """How the inbox names an account: with the id the list of accounts shows."""
     return {"id": link.id, "name": link.account.name, "channel": link.account.channel}
@@ -147,9 +156,9 @@ class MessageListView(APIView):
     def get(self, request, channel, contact_id):
         query = MessagesQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
-        link = pick_link(business_links(request, channel), query.validated_data["account"])
+        link, inbox = chat_scope(request, channel, query.validated_data["account"])
         found = get_messages(
-            TenantInbox([link.account]),
+            inbox,
             contact_id,
             account=link.account,
             channel=channel,
@@ -202,10 +211,10 @@ class SendMessageView(APIView):
     def post(self, request, channel, contact_id):
         body = SendMessageSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        link = pick_link(business_links(request, channel), body.validated_data["account"])
+        link, inbox = chat_scope(request, channel, body.validated_data["account"])
         try:
             sent = send_message(
-                TenantInbox([link.account]),
+                inbox,
                 contact_id,
                 account=link.account,
                 text=body.validated_data["text"],
@@ -254,8 +263,7 @@ class BotView(APIView):
     def post(self, request, channel, contact_id):
         body = PauseBotSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        link = pick_link(business_links(request, channel), body.validated_data["account"])
-        inbox = TenantInbox([link.account])
+        link, inbox = chat_scope(request, channel, body.validated_data["account"])
         # Only chats that exist: otherwise anyone could create records for made-up ids
         if not inbox.messages(link.account).filter(contact_id=contact_id, channel=channel).exists():
             raise Http404
