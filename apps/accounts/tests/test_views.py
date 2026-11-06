@@ -206,7 +206,8 @@ class TestTokenEndpoints:
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
-        assert "refresh" in response.data
+        assert "refresh" not in response.data
+        assert response.cookies["refresh_token"].value
 
     def test_login_ignores_email_capitalization(self, api_client, user):
         url = reverse("accounts:token_obtain_pair")
@@ -223,13 +224,10 @@ class TestTokenEndpoints:
         # First, obtain tokens
         obtain_url = reverse("accounts:token_obtain_pair")
         data = {"email": "testuser@example.com", "password": "testpass123"}
-        obtain_response = api_client.post(obtain_url, data, format="json")
-        refresh_token = obtain_response.data["refresh"]
+        api_client.post(obtain_url, data, format="json")
 
-        # Then, refresh
+        # Then, refresh: the cookie from the login travels by itself
         refresh_url = reverse("accounts:token_refresh")
-        response = api_client.post(
-            refresh_url, {"refresh": refresh_token}, format="json"
-        )
+        response = api_client.post(refresh_url, HTTP_X_REQUESTED_WITH="fetch")
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data

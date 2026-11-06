@@ -46,6 +46,8 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
+# The refresh token cookie (see AUTH_REFRESH_COOKIE_* in base.py) is never sent over plain HTTP
+AUTH_REFRESH_COOKIE_SECURE = True
 
 # Content Security
 SECURE_CONTENT_TYPE_NOSNIFF = True

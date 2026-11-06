@@ -10,6 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 
 # =============================================================================
@@ -249,6 +250,13 @@ SIMPLE_JWT = {
     "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
 }
 
+# The refresh token travels in an httpOnly cookie, never in a response body. The cookie only
+# goes to the authentication routes and to the API host (no Domain), so the frontend and the
+# API must share a base domain (app.example.com / api.example.com).
+AUTH_REFRESH_COOKIE_NAME = "refresh_token"
+AUTH_REFRESH_COOKIE_PATH = "/api/v1/accounts/"
+AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=False)
+
 # =============================================================================
 # DRF SPECTACULAR (API DOCUMENTATION)
 # =============================================================================
@@ -274,6 +282,9 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
+# A browser on another origin may send, besides the usual ones, the header that names the
+# active business: without it the browser rejects every request of a business.
+CORS_ALLOW_HEADERS = (*default_headers, "x-tenant-id")
 
 # Base URL of the frontend, used in links sent by email
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
