@@ -10,6 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 from django.core.exceptions import ImproperlyConfigured
 
 # =============================================================================
@@ -281,6 +282,9 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
+# A browser on another origin may send, besides the usual ones, the header that names the
+# active business: without it the browser rejects every request of a business.
+CORS_ALLOW_HEADERS = (*default_headers, "x-tenant-id")
 
 # Base URL of the frontend, used in links sent by email
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
