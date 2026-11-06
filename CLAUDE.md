@@ -34,6 +34,7 @@ Summary of the most critical ones (full detail in the imported file below):
 - Everything is scoped to a tenant; no query, handler or reply may cross tenants.
 - The frontend never calls Meta; every action goes through this backend's API. `wanps.inbox` is installed and its logic is served by this backend.
 - The inbox is one per channel under `/api/v1/inbox/<channel>/`; it reads through `wanps.inbox.services` with a `TenantInbox` limited to the active business's connected accounts, and `wanps.inbox`'s own keyed API is never mounted.
+- On Messenger and Instagram, a person can reply 24 hours to 7 days after the client's last message by sending `human_agent: true` in the send action; it is rejected on WhatsApp.
 - Initial roles: agent, supervisor, admin.
 - Appointments belong to a contact; contacts live in a pipeline.
 - Channel secrets are stored encrypted and never returned by the API.

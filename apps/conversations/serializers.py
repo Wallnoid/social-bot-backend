@@ -71,6 +71,12 @@ class SendMessageSerializer(serializers.Serializer):
 
     account = serializers.UUIDField()
     text = serializers.CharField()
+    human_agent = serializers.BooleanField(
+        default=False,
+        help_text="Messenger and Instagram only: reply as a person once the 24-hour window is "
+        "closed, up to 7 days after the client's last message. While the window is open it has "
+        "no effect.",
+    )
 
 
 class PauseBotSerializer(serializers.Serializer):
