@@ -3,6 +3,7 @@ Views for the channels app.
 """
 
 from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
 from rest_framework.exceptions import APIException, ValidationError
@@ -12,7 +13,12 @@ from rest_framework.response import Response
 from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
 from .models import ChannelAccount, meta_app_for
-from .serializers import ALREADY_CONNECTED, ChannelAccountSerializer, ConnectAccountSerializer
+from .serializers import (
+    ALREADY_CONNECTED,
+    ChannelAccountSerializer,
+    ConnectAccountSerializer,
+    UpdateAccountSerializer,
+)
 
 
 class MetaAppNotSetUp(APIException):
@@ -24,10 +30,38 @@ class MetaAppNotSetUp(APIException):
 
 
 class ChannelAccountListView(generics.GenericAPIView):
-    """POST /api/v1/channels/accounts/ → connect an account to the active business."""
+    """
+    GET /api/v1/channels/accounts/ → the accounts of the active business, for any member.
+    POST /api/v1/channels/accounts/ → connect an account to the active business, for admins.
+    """
 
     serializer_class = ConnectAccountSerializer
-    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    def get_permissions(self):
+        permissions = [IsAuthenticated, HasActiveTenant]
+        if self.request.method == "POST":
+            permissions.append(IsTenantAdmin)
+        return [permission() for permission in permissions]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "ChannelAccountListResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": ChannelAccountSerializer(many=True),
+                },
+            )
+        }
+    )
+    def get(self, request):
+        links = ChannelAccount.objects.filter(tenant=request.tenant).select_related("account")
+        return Response(
+            {
+                "success": True,
+                "data": ChannelAccountSerializer(links.order_by("created_at"), many=True).data,
+            }
+        )
 
     @extend_schema(
         responses={
@@ -55,3 +89,27 @@ class ChannelAccountListView(generics.GenericAPIView):
             {"success": True, "data": ChannelAccountSerializer(link).data},
             status=status.HTTP_201_CREATED,
         )
+
+
+class ChannelAccountDetailView(generics.GenericAPIView):
+    """PATCH /api/v1/channels/accounts/<id>/ → edit an account of the active business."""
+
+    serializer_class = UpdateAccountSerializer
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "ChannelAccountResponse",
+                {"success": serializers.BooleanField(), "data": ChannelAccountSerializer()},
+            )
+        }
+    )
+    def patch(self, request, account_id):
+        # Only this business's accounts are looked up: another business's is simply not found
+        links = ChannelAccount.objects.filter(tenant=request.tenant).select_related("account")
+        link = get_object_or_404(links, pk=account_id)
+        serializer = self.get_serializer(link.account, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"success": True, "data": ChannelAccountSerializer(link).data})

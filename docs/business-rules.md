@@ -29,6 +29,7 @@
 7. **Idempotent messages:** an incoming message is processed once, even if Meta resends the webhook (dedup by external id, handled by `wanps-core`).
 8. **Secrets:** channel tokens and keys are stored encrypted (`WANPS_ENCRYPTION_KEY`) and never returned by the API.
 9. **Soft delete:** models based on `BaseModel` are deleted logically and can be restored.
+10. **One inbox per channel:** WhatsApp, Messenger and Instagram each have their own inbox. There is no unified inbox: the inbox API always takes the channel, and never lists conversations from several channels together.
 
 ## Special cases
 - WhatsApp Business API numbers cannot be used from the WhatsApp Business app, so every human reply must go through this system.

@@ -1,7 +1,7 @@
 # Social Bot Backend
 
 ## Context
-Backend of the Social Bot suite, an omnichannel messaging and CRM platform (similar to Kommo or respond.io). Teams answer WhatsApp Business API, Messenger and Instagram messages from one inbox, and manage contacts, a sales pipeline, appointments and notifications. It is multi-tenant: each tenant (business) has its own channel accounts, bots, users and data. The frontend talks only to this backend.
+Backend of the Social Bot suite, an omnichannel messaging and CRM platform (similar to Kommo or respond.io). Teams answer WhatsApp Business API, Messenger and Instagram messages from one app, with a separate inbox per channel, and manage contacts, a sales pipeline, appointments and notifications. It is multi-tenant: each tenant (business) has its own channel accounts, bots, users and data. The frontend talks only to this backend.
 
 Channel connections (webhooks, sending, conversations, AI handlers) come from `wanps-core`, a sibling repo at `../wanps-core` (see its `README.md`). This repo consumes it and does not reimplement it.
 
