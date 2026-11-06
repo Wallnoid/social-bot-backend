@@ -27,6 +27,7 @@ urlpatterns = [
         path("accounts/", include("apps.accounts.urls")),
         path("tenants/", include("apps.tenants.urls")),
         path("channels/", include("apps.channels.urls")),
+        path("inbox/", include("apps.conversations.urls")),
     ])),
     # Meta webhook (WhatsApp, Messenger, Instagram), served by wanps-core. Only the
     # per-app route: the one without a key has no app secret to check signatures.
