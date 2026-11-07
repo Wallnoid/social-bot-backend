@@ -231,7 +231,7 @@ def test_api_docs_describe_sending():
 
     operation = schema["paths"][path]["post"]
     body = named(operation["requestBody"]["content"]["application/json"]["schema"])
-    assert set(body["properties"]) == {"account", "text", "human_agent"}
+    assert set(body["properties"]) == {"account", "text", "human_agent", "template"}
     assert body["properties"]["account"]["format"] == "uuid"
 
     created = operation["responses"]["201"]["content"]["application/json"]["schema"]
