@@ -66,17 +66,36 @@ class ChatMessagesSerializer(serializers.Serializer):
     has_more = serializers.BooleanField()
 
 
+class TemplateToSendSerializer(serializers.Serializer):
+    """An approved WhatsApp template and the values to fill in, in order."""
+
+    name = serializers.CharField()
+    language = serializers.CharField()
+    params = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+
+
 class SendMessageSerializer(serializers.Serializer):
-    """A reply typed by a person: the account of the chat and the text."""
+    """A reply typed by a person: the account of the chat and the text, or a template."""
 
     account = serializers.UUIDField()
-    text = serializers.CharField()
+    text = serializers.CharField(required=False)
+    template = TemplateToSendSerializer(
+        required=False,
+        help_text="WhatsApp only, instead of the text. It can go out of the 24-hour window.",
+    )
     human_agent = serializers.BooleanField(
         default=False,
         help_text="Messenger and Instagram only: reply as a person once the 24-hour window is "
         "closed, up to 7 days after the client's last message. While the window is open it has "
         "no effect.",
     )
+
+    def validate(self, attrs):
+        if bool(attrs.get("text")) == bool(attrs.get("template")):
+            raise serializers.ValidationError(
+                "Send either 'text' or 'template', not both and not neither."
+            )
+        return attrs
 
 
 class PauseBotSerializer(serializers.Serializer):
@@ -94,3 +113,19 @@ class BotStateSerializer(serializers.Serializer):
     bot_paused = serializers.BooleanField()
     bot_paused_until = serializers.DateTimeField(allow_null=True)
     paused_by = serializers.CharField()
+
+
+class TemplatesQuerySerializer(serializers.Serializer):
+    """Whose templates: an account of the business."""
+
+    account = serializers.UUIDField()
+
+
+class TemplateSerializer(serializers.Serializer):
+    """An approved template that can be sent from here."""
+
+    name = serializers.CharField()
+    language = serializers.CharField()
+    category = serializers.CharField()
+    body = serializers.CharField(help_text="The text, with its {{1}}, {{2}}... placeholders.")
+    variables = serializers.IntegerField(help_text="How many values the template takes.")

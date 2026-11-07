@@ -6,6 +6,7 @@ which accounts it may look at: only the connected accounts of the active busines
 import logging
 
 import requests
+from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -22,7 +23,7 @@ from wanps.inbox.services import (
 )
 from wanps.messaging.meta_messaging import MetaAPIError
 from wanps.messaging.models import Message
-from wanps.whatsapp.client import WhatsAppError
+from wanps.whatsapp.client import WhatsAppError, list_templates
 
 from apps.channels.models import ChannelAccount
 from apps.tenants.permissions import HasActiveTenant
@@ -36,6 +37,8 @@ from .serializers import (
     MessagesQuerySerializer,
     PauseBotSerializer,
     SendMessageSerializer,
+    TemplateSerializer,
+    TemplatesQuerySerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,6 +172,70 @@ class MessageListView(APIView):
         return Response({"success": True, "data": data})
 
 
+class TemplatesUnavailable(APIException):
+    status_code = status.HTTP_502_BAD_GATEWAY
+    default_detail = (
+        "The channel could not give the templates. "
+        "If it keeps failing, ask an admin to check the account."
+    )
+    default_code = "templates_unavailable"
+
+
+def templates_of(link):
+    """The templates of an account that can be sent, with the errors in the API format."""
+    try:
+        return list_templates(link.account)
+    except ImproperlyConfigured:
+        raise ValidationError(
+            {
+                "account": "This account has no WhatsApp Business account id, "
+                "so its templates cannot be used."
+            }
+        ) from None
+    except (WhatsAppError, requests.RequestException) as exc:
+        # Only the kind of error: its text can carry the address with the access token
+        logger.warning(
+            "Could not list the templates of account %s: %s (status %s)",
+            link.id,
+            type(exc).__name__,
+            getattr(exc, "status_code", None),
+        )
+        raise TemplatesUnavailable from None
+
+
+def check_template(link, inbox, contact_id, template):
+    """
+    A template skips the 24-hour window and the check of the chat, so both are made here: it is
+    only for a client who already wrote to this account, and for a template that can be sent.
+    """
+    wrote = inbox.messages(link.account).filter(
+        contact_id=contact_id, channel="whatsapp", direction=Message.DIRECTION_IN
+    )
+    if not wrote.exists():
+        raise Http404
+    listed = next(
+        (
+            t
+            for t in templates_of(link)
+            if (t["name"], t["language"]) == (template["name"], template["language"])
+        ),
+        None,
+    )
+    if listed is None:
+        raise ValidationError(
+            {
+                "template": "That template does not exist, is not approved or cannot be sent from here."
+            }
+        )
+    if listed["variables"] != len(template["params"]):
+        raise ValidationError(
+            {
+                "template": f"This template takes {listed['variables']} values "
+                f"and {len(template['params'])} were given."
+            }
+        )
+
+
 class ReplyWindowClosed(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = "The 24-hour window is closed: a reply cannot be sent from here."
@@ -201,8 +268,10 @@ class SendMessageView(APIView):
 
     @extend_schema(
         description=(
-            "Sends the text from the account of the chat, in the name of the member. "
-            "Sending pauses the bot in that chat until it is resumed."
+            "Sends the text, or on WhatsApp an approved template, from the account of the chat, "
+            "in the name of the member. A template can go out of the 24-hour window, but only to "
+            "a client who already wrote to the account. Sending pauses the bot in that chat until "
+            "it is resumed."
         ),
         request=SendMessageSerializer,
         responses={
@@ -211,8 +280,9 @@ class SendMessageView(APIView):
                 {"success": serializers.BooleanField(), "data": InboxMessageSerializer()},
             ),
             400: OpenApiResponse(
-                description="Empty text, the account is missing or malformed, or the "
-                "human-agent option is used on WhatsApp."
+                description="Empty text, both text and template or neither, the account is "
+                "missing or malformed, the human-agent option is used on WhatsApp, or the template "
+                "does not exist, is not approved or takes another number of values."
             ),
             404: OpenApiResponse(
                 description="The account is not one of the business's on this channel."
@@ -229,17 +299,23 @@ class SendMessageView(APIView):
         body = SendMessageSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         human_agent = body.validated_data["human_agent"]
+        template = body.validated_data.get("template")
         if human_agent and channel == "whatsapp":
             raise ValidationError(
                 {"human_agent": "This option only exists on Messenger and Instagram."}
             )
+        if template and channel != "whatsapp":
+            raise ValidationError({"template": "Templates only exist on WhatsApp."})
         link, inbox = chat_scope(request, channel, body.validated_data["account"])
+        if template:
+            check_template(link, inbox, contact_id, template)
         try:
             sent = send_message(
                 inbox,
                 contact_id,
                 account=link.account,
-                text=body.validated_data["text"],
+                text=body.validated_data.get("text", ""),
+                template=dict(template) if template else None,
                 human_agent=human_agent,
                 sent_by=request.user.full_name,
                 channel=channel,
@@ -255,10 +331,11 @@ class SendMessageView(APIView):
         except (WhatsAppError, MetaAPIError, requests.RequestException) as exc:
             # Only the kind of error: its text can carry the URL with the access token
             logger.warning(
-                "Could not send a %s message from account %s: %s",
+                "Could not send a %s message from account %s: %s (status %s)",
                 channel,
                 link.id,
                 type(exc).__name__,
+                getattr(exc, "status_code", None),
             )
             raise MessageNotDelivered from None
         return Response(
@@ -307,3 +384,25 @@ class BotView(APIView):
         )
         data = BotStateSerializer({**state, "account": account_of(link)}).data
         return Response({"success": True, "data": data})
+
+
+class TemplateListView(APIView):
+    """GET /api/v1/inbox/whatsapp/templates/ → the templates of an account that can be sent."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+
+    @extend_schema(
+        parameters=[TemplatesQuerySerializer],
+        responses={
+            200: inline_serializer(
+                "TemplateListResponse",
+                {"success": serializers.BooleanField(), "data": TemplateSerializer(many=True)},
+            )
+        },
+    )
+    def get(self, request):
+        query = TemplatesQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        link = pick_link(business_links(request, "whatsapp"), query.validated_data["account"])
+        templates = templates_of(link)
+        return Response({"success": True, "data": TemplateSerializer(templates, many=True).data})

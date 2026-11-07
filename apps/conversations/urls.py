@@ -4,7 +4,13 @@ URL configuration for the inbox: one inbox per channel.
 
 from django.urls import re_path
 
-from .views import BotView, ConversationListView, MessageListView, SendMessageView
+from .views import (
+    BotView,
+    ConversationListView,
+    MessageListView,
+    SendMessageView,
+    TemplateListView,
+)
 
 app_name = "conversations"
 
@@ -12,6 +18,8 @@ app_name = "conversations"
 CHANNEL = r"(?P<channel>whatsapp|messenger|instagram)"
 
 urlpatterns = [
+    # The templates belong to the WhatsApp account, not to a chat
+    re_path(r"^whatsapp/templates/$", TemplateListView.as_view(), name="template-list"),
     re_path(
         rf"^{CHANNEL}/conversations/$", ConversationListView.as_view(), name="conversation-list"
     ),
