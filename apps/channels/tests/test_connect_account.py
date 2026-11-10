@@ -274,3 +274,19 @@ def test_an_account_without_an_access_token_is_rejected(admin_client):
     assert "access_token" in missing.data["errors"]
     assert "access_token" in empty.data["errors"]
     assert not Account.objects.exists()
+
+
+def test_a_whatsapp_account_needs_its_business_account_id_but_other_channels_do_not(admin_client):
+    SharedMetaApp.objects.create(app=add_app("Social Bot"))
+    data = {"channel": "whatsapp", "name": "Front desk", "external_id": "111"}
+    data["access_token"] = "EAAG-secret-token"
+
+    missing = admin_client.post(ACCOUNTS_URL, data, format="json")
+    empty = connect(admin_client, external_id="111", business_id="")
+    messenger = connect(admin_client, channel="messenger", external_id="222", business_id="")
+
+    assert missing.status_code == empty.status_code == 400
+    assert "business_id" in missing.data["errors"]
+    assert "business_id" in empty.data["errors"]
+    assert messenger.status_code == 201
+    assert list(Account.objects.values_list("channel", flat=True)) == ["messenger"]

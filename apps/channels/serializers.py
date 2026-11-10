@@ -34,6 +34,14 @@ class ConnectAccountSerializer(serializers.ModelSerializer):
             )
         ]
 
+    def validate(self, attrs):
+        # Meta lists a number's templates under its WhatsApp Business account, so WhatsApp needs it
+        if attrs["channel"] == "whatsapp" and not attrs.get("business_id"):
+            raise serializers.ValidationError(
+                {"business_id": "This field is required for a WhatsApp account."}
+            )
+        return attrs
+
 
 class UpdateAccountSerializer(serializers.ModelSerializer):
     """What a business admin can change on a connected account."""
