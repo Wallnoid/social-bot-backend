@@ -10,7 +10,7 @@ from apps.accounts.emails import format_validity
 
 def send_invitation_email(invitation):
     """Email the invited person a link to join the business."""
-    link = f"{settings.FRONTEND_URL}/accept-invitation?token={invitation.token}"
+    link = f"{settings.FRONTEND_URL}/invitation?token={invitation.token}"
     send_mail(
         subject=f"Te invitaron a {invitation.tenant.name} en Social Bot",
         message=(

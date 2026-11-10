@@ -55,10 +55,14 @@ def custom_exception_handler(exc, context):
         }
 
         # Add field-level errors for validation errors
+        # Stable machine-readable codes, so clients do not match on message text
         if isinstance(exc, DRFValidationError):
             error_payload["errors"] = response.data
+            error_payload["error_codes"] = exc.get_codes()
         elif isinstance(response.data, dict):
             error_payload["errors"] = response.data
+        if isinstance(exc, APIException) and not isinstance(exc, DRFValidationError):
+            error_payload["code"] = exc.get_codes()
 
         response.data = error_payload
 

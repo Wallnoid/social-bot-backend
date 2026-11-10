@@ -8,7 +8,7 @@ As a business admin, I want to invite a person by email with a role (agent, supe
 
 ## Plan
 - An invitation record per business with email, role, who invited, a single-use token and the expiry date, calculated from a value in `.env` (7 days by default).
-- An endpoint for the admin of the active business (`X-Tenant-ID`) that validates the email and role, creates the invitation and sends the email with the link `{FRONTEND_URL}/accept-invitation?token=…`.
+- An endpoint for the admin of the active business (`X-Tenant-ID`) that validates the email and role, creates the invitation and sends the email with the link `{FRONTEND_URL}/invitation?token=…`.
 - Only an admin of the active business can invite; agent and supervisor get a rejection.
 - Inviting someone who is already an active member or has a non-expired pending invitation in that business is rejected.
 - If the email cannot be sent, the API responds with an error and the invitation is not saved.

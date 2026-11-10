@@ -55,7 +55,7 @@ def test_invitation_email_has_the_link_and_the_expiry(admin_client, settings, ma
     email = mailoutbox[0]
     assert email.to == ["new@acme.test"]
     token = Invitation.objects.get(email="new@acme.test").token
-    assert f"https://app.example.test/accept-invitation?token={token}" in email.body
+    assert f"https://app.example.test/invitation?token={token}" in email.body
     assert "Acme Dental" in email.body
     assert "Supervisor" in email.body
     assert "válido por 7 días" in email.body

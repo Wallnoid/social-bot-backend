@@ -72,6 +72,14 @@ class SetPasswordView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [BurstAnonRateThrottle]
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "SetPasswordResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

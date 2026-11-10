@@ -8,6 +8,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.test import APIClient
 
 from apps.tenants.models import Invitation, Membership, Tenant
@@ -17,7 +18,8 @@ User = get_user_model()
 
 LOOKUP_URL = "/api/v1/tenants/invitations/lookup/"
 ACCEPT_URL = "/api/v1/tenants/invitations/accept/"
-INVALID_LINK_MESSAGE = "The invitation is invalid or has expired."
+INVALID_LINK_MESSAGE = "The invitation is invalid."
+EXPIRED_LINK_MESSAGE = "The invitation has expired."
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +57,9 @@ def test_lookup_shows_the_invitation_to_a_new_person(api, invitation):
         "tenant": "Acme Dental",
         "email": "new@acme.test",
         "role": "supervisor",
+        "invited_by": {"first_name": "", "last_name": "", "email": "boss@acme.test"},
+        "expires_at": serializers.DateTimeField().to_representation(invitation.expires_at),
+        "has_account": False,
         "next_step": "create_account",
     }
 
@@ -100,6 +105,13 @@ def deactivate_invited_user(invitation):
 INVALID_LINKS = [expire, use, change_token, delete_business, deactivate_invited_user]
 
 
+def expected_error(invalidate):
+    """The message and code a link gets: only a link past its date is "expired"."""
+    if invalidate is expire:
+        return EXPIRED_LINK_MESSAGE, "invitation_expired"
+    return INVALID_LINK_MESSAGE, "invitation_invalid"
+
+
 @pytest.mark.parametrize("invalidate", INVALID_LINKS)
 def test_lookup_rejects_an_invalid_link(api, invitation, invalidate):
     token = invitation.token
@@ -107,8 +119,10 @@ def test_lookup_rejects_an_invalid_link(api, invitation, invalidate):
 
     response = api.post(LOOKUP_URL, {"token": token}, format="json")
 
+    message, code = expected_error(invalidate)
     assert response.status_code == 400
-    assert response.data["errors"]["token"] == [INVALID_LINK_MESSAGE]
+    assert response.data["errors"]["token"] == [message]
+    assert response.data["error_codes"]["token"] == [code]
 
 
 def test_new_person_joins_with_the_invited_role_and_can_log_in(api, invitation, tenant):
@@ -272,8 +286,10 @@ def test_accept_rejects_an_invalid_link_with_the_same_message(api, invitation, t
         format="json",
     )
 
+    message, code = expected_error(invalidate)
     assert response.status_code == 400
-    assert response.data["errors"]["token"] == [INVALID_LINK_MESSAGE]
+    assert response.data["errors"]["token"] == [message]
+    assert response.data["error_codes"]["token"] == [code]
     assert not Membership.all_objects.filter(tenant=tenant).exists()
 
 
@@ -394,7 +410,7 @@ def test_invalid_link_with_blank_fields_gets_the_link_message(api, invitation):
     )
 
     assert response.status_code == 400
-    assert response.data["errors"] == {"token": [INVALID_LINK_MESSAGE]}
+    assert response.data["errors"] == {"token": [EXPIRED_LINK_MESSAGE]}
 
 
 def test_logged_in_user_can_send_blank_fields(api, invitation, tenant):
@@ -434,3 +450,20 @@ def test_lookup_and_accept_are_rate_limited(api, db, url):
     response = api.post(url, {"token": "unknown"}, format="json")
 
     assert response.status_code == 429
+
+
+def test_weak_password_error_carries_the_rule_code(api, invitation):
+    response = api.post(
+        ACCEPT_URL,
+        {
+            "token": invitation.token,
+            "first_name": "Ana",
+            "last_name": "Vera",
+            "new_password": "password",
+            "new_password_confirm": "password",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "password_too_common" in response.data["error_codes"]["new_password"]

@@ -23,11 +23,14 @@ from .serializers import (
     InvitationAcceptSerializer,
     InvitationLookupSerializer,
     InvitationSerializer,
+    InviterSerializer,
     MemberSerializer,
 )
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+NEXT_STEPS = ["create_account", "log_in", "create_password"]
 
 
 class InvitationEmailError(APIException):
@@ -142,6 +145,28 @@ class InvitationLookupView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     throttle_classes = [BurstAnonRateThrottle]
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "InvitationLookupResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer(
+                        "InvitationLookupData",
+                        {
+                            "tenant": serializers.CharField(),
+                            "email": serializers.EmailField(),
+                            "role": serializers.ChoiceField(choices=Membership.Role.choices),
+                            "invited_by": InviterSerializer(),
+                            "expires_at": serializers.DateTimeField(),
+                            "has_account": serializers.BooleanField(),
+                            "next_step": serializers.ChoiceField(choices=NEXT_STEPS),
+                        },
+                    ),
+                },
+            )
+        }
+    )
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -160,6 +185,11 @@ class InvitationLookupView(generics.GenericAPIView):
                     "tenant": invitation.tenant.name,
                     "email": invitation.email,
                     "role": invitation.role,
+                    "invited_by": InviterSerializer(invitation.invited_by).data,
+                    "expires_at": serializers.DateTimeField().to_representation(
+                        invitation.expires_at
+                    ),
+                    "has_account": user is not None,
                     "next_step": next_step,
                 },
             }
@@ -175,6 +205,23 @@ class InvitationAcceptView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     throttle_classes = [BurstAnonRateThrottle, BurstUserRateThrottle]
 
+    @extend_schema(
+        responses={
+            201: inline_serializer(
+                "InvitationAcceptResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer(
+                        "InvitationAcceptData",
+                        {
+                            "tenant": serializers.CharField(),
+                            "role": serializers.ChoiceField(choices=Membership.Role.choices),
+                        },
+                    ),
+                },
+            )
+        }
+    )
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         with transaction.atomic():

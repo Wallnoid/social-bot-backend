@@ -5,8 +5,11 @@ Serializers for the tenants app.
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import NotAuthenticated, PermissionDenied
+from rest_framework.exceptions import ErrorDetail, NotAuthenticated, PermissionDenied
+
+from apps.core.utils import password_error_details
 
 from .models import Invitation, Membership
 
@@ -69,10 +72,24 @@ class InvitationLookupSerializer(serializers.Serializer):
         if self.lock_invitation:
             invitations = invitations.select_for_update(of=("self",))
         invitation = invitations.first()
-        user = invitation and User.objects.filter(email__iexact=invitation.email).first()
-        if invitation is None or (user is not None and not user.is_active):
+        if invitation is None:
+            # Past its date but not used or cancelled: tell it apart, so the person asks for a new one
+            expired = Invitation.objects.filter(
+                token=attrs["token"],
+                tenant__is_deleted=False,
+                expires_at__lte=timezone.now(),
+            ).exists()
+            if expired:
+                raise serializers.ValidationError(
+                    {"token": [ErrorDetail("The invitation has expired.", "invitation_expired")]}
+                )
             raise serializers.ValidationError(
-                {"token": ["The invitation is invalid or has expired."]}
+                {"token": [ErrorDetail("The invitation is invalid.", "invitation_invalid")]}
+            )
+        user = User.objects.filter(email__iexact=invitation.email).first()
+        if user is not None and not user.is_active:
+            raise serializers.ValidationError(
+                {"token": [ErrorDetail("The invitation is invalid.", "invitation_invalid")]}
             )
         attrs["invitation"] = invitation
         attrs["user"] = user
@@ -126,5 +143,7 @@ class InvitationAcceptSerializer(InvitationLookupSerializer):
         try:
             validate_password(attrs["new_password"], candidate)
         except DjangoValidationError as error:
-            raise serializers.ValidationError({"new_password": list(error.messages)}) from error
+            raise serializers.ValidationError(
+                {"new_password": password_error_details(error)}
+            ) from error
         return attrs
