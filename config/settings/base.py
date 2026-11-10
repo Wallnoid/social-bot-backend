@@ -181,7 +181,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# Where the saved files go. Empty means `media/` in the project; set it to put them on another disk
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default="") or BASE_DIR / "media")
+
+# The files that clients send are saved the first time someone opens them (see apps/conversations/files.py)
+MESSAGE_FILE_MAX_BYTES = env.int("MESSAGE_FILE_MAX_BYTES", default=16 * 1024 * 1024)
+MESSAGE_FILE_RETENTION_DAYS = env.int("MESSAGE_FILE_RETENTION_DAYS", default=30)
 
 # =============================================================================
 # DJANGO REST FRAMEWORK
@@ -330,6 +335,12 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_BEAT_SCHEDULE = {
+    "delete-expired-message-files": {
+        "task": "apps.conversations.tasks.delete_expired_message_files",
+        "schedule": 24 * 60 * 60,  # every day
+    },
+}
 
 # =============================================================================
 # CACHING

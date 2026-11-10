@@ -26,10 +26,24 @@ class MessagesQuerySerializer(serializers.Serializer):
     before = serializers.IntegerField(min_value=1, required=False)
 
 
+class FileQuerySerializer(serializers.Serializer):
+    """Which account the chat of the file belongs to (the same account the messages need)."""
+
+    account = serializers.UUIDField()
+
+
 class InboxAccountSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField()
     channel = serializers.CharField()
+
+
+class MessageFileSerializer(serializers.Serializer):
+    """The file a message carries. The type and the name are empty when Meta does not send them."""
+
+    kind = serializers.CharField(help_text="image, audio, video, document or sticker.")
+    mime_type = serializers.CharField()
+    filename = serializers.CharField()
 
 
 class InboxMessageSerializer(serializers.Serializer):
@@ -40,6 +54,12 @@ class InboxMessageSerializer(serializers.Serializer):
     status = serializers.CharField()
     sent_by = serializers.CharField()
     created_at = serializers.DateTimeField()
+
+
+class ChatMessageSerializer(InboxMessageSerializer):
+    """A message as the chat shows it: the list of chats keeps its smaller `last_message`."""
+
+    file = MessageFileSerializer(allow_null=True, help_text="The file the message carries, if any.")
 
 
 class ConversationSerializer(serializers.Serializer):
@@ -62,7 +82,7 @@ class ChatMessagesSerializer(serializers.Serializer):
     bot_paused = serializers.BooleanField()
     bot_paused_until = serializers.DateTimeField(allow_null=True)
     paused_by = serializers.CharField()
-    messages = InboxMessageSerializer(many=True)
+    messages = ChatMessageSerializer(many=True)
     has_more = serializers.BooleanField()
 
 

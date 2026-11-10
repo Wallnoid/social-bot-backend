@@ -7,7 +7,8 @@ import logging
 
 import requests
 from django.core.exceptions import ImproperlyConfigured
-from django.http import Http404
+from django.http import Http404, HttpResponse
+from django.utils.http import content_disposition_header
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException, ValidationError
@@ -21,6 +22,7 @@ from wanps.inbox.services import (
     send_message,
     set_bot_paused,
 )
+from wanps.messaging.attachments import get_attachment
 from wanps.messaging.meta_messaging import MetaAPIError
 from wanps.messaging.models import Message
 from wanps.whatsapp.client import WhatsAppError, list_templates
@@ -28,11 +30,13 @@ from wanps.whatsapp.client import WhatsAppError, list_templates
 from apps.channels.models import ChannelAccount
 from apps.tenants.permissions import HasActiveTenant
 
+from .files import open_message_file
 from .serializers import (
     BotStateSerializer,
     ChatMessagesSerializer,
     ConversationSerializer,
     ConversationsQuerySerializer,
+    FileQuerySerializer,
     InboxMessageSerializer,
     MessagesQuerySerializer,
     PauseBotSerializer,
@@ -93,6 +97,25 @@ def chat_scope(request, channel, account_id):
 def account_of(link):
     """How the inbox names an account: with the id the list of accounts shows."""
     return {"id": link.id, "name": link.account.name, "channel": link.account.channel}
+
+
+def mark_files(messages, readable):
+    """Add to each message the file it carries (or None). Only messages the business can read."""
+    stored = readable.filter(
+        pk__in=[message["id"] for message in messages], direction=Message.DIRECTION_IN
+    )
+    attachments = {message.pk: get_attachment(message) for message in stored}
+    for message in messages:
+        attachment = attachments.get(message["id"])
+        message["file"] = (
+            {
+                "kind": attachment.kind,
+                "mime_type": attachment.mime_type,
+                "filename": attachment.filename,
+            }
+            if attachment
+            else None
+        )
 
 
 class ConversationListView(APIView):
@@ -168,8 +191,58 @@ class MessageListView(APIView):
             limit=query.validated_data["limit"],
             before=query.validated_data.get("before"),
         )
+        mark_files(found["messages"], inbox.messages(link.account))
         data = ChatMessagesSerializer({**found, "account": account_of(link)}).data
         return Response({"success": True, "data": data})
+
+
+# Types a browser can show without running anything (an SVG can carry a script)
+INLINE_TYPES = ("image/", "audio/", "video/")
+NOT_INLINE = ("image/svg+xml",)
+
+
+class MessageFileView(APIView):
+    """GET .../messages/<id>/file/ → the file a message carries, as its own bytes."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+
+    @extend_schema(
+        parameters=[FileQuerySerializer],
+        responses={
+            (200, "*/*"): OpenApiResponse(description="The bytes of the file."),
+            404: OpenApiResponse(description="No such message, or it carries no file."),
+            410: OpenApiResponse(description="Meta does not keep the file any more."),
+            413: OpenApiResponse(description="The file is bigger than the cap and is not saved."),
+            502: OpenApiResponse(description="The file could not be fetched right now. Try again."),
+        },
+    )
+    def get(self, request, channel, contact_id, message_id):
+        query = FileQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        link, inbox = chat_scope(request, channel, query.validated_data["account"])
+        message = (
+            inbox.messages(link.account)
+            .filter(
+                pk=message_id,
+                contact_id=contact_id,
+                channel=channel,
+                direction=Message.DIRECTION_IN,
+            )
+            .first()
+        )
+        attachment = get_attachment(message) if message else None
+        if attachment is None:
+            raise Http404
+        content, mime_type = open_message_file(message)
+        response = HttpResponse(content, content_type=mime_type)
+        # The type comes from the client's side of Meta, so the browser must not guess another
+        # one, and anything that is not a picture, a sound or a video is downloaded, not opened
+        response["X-Content-Type-Options"] = "nosniff"
+        if not mime_type.startswith(INLINE_TYPES) or mime_type in NOT_INLINE:
+            response["Content-Disposition"] = content_disposition_header(
+                True, attachment.filename or None
+            )
+        return response
 
 
 class TemplatesUnavailable(APIException):

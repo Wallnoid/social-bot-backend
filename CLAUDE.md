@@ -49,6 +49,7 @@ Summary of the most critical ones (full detail in the imported file below):
 - The active business comes from the `X-Tenant-ID` header; views opt in with `HasActiveTenant` (`apps/tenants/permissions.py`), which sets `request.tenant` and `request.membership`.
 - Invitation expiry comes from `INVITATION_TIMEOUT` in `.env`; a view that needs an admin of the active business adds `IsTenantAdmin` after `HasActiveTenant`.
 - The refresh token travels only in the httpOnly cookie `refresh_token` (`SameSite=Strict`, path `/api/v1/accounts/`, `Secure` from `AUTH_REFRESH_COOKIE_SECURE`), never in a body; refresh and logout require the `X-Requested-With` header, and the access token goes in the `Authorization` header.
+- The files clients send are saved the first time someone opens them, through Django's default storage (`MESSAGE_FILE_MAX_BYTES`, `MESSAGE_FILE_RETENTION_DAYS`); a daily Celery Beat job deletes the old ones, so every service that saves or deletes them needs the `media_files` volume.
 - Per-area rules live in `.claude/rules/`.
 
 ## Detailed documentation

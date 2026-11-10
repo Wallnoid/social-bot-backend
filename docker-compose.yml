@@ -88,6 +88,9 @@ services:
           target: github_token
     restart: unless-stopped
     command: celery -A config worker -l info --concurrency=2
+    # Same files as web: the worker deletes the saved files of the messages when they expire
+    volumes:
+      - media_files:/app/media
     env_file:
       - .env
     environment:

@@ -7,6 +7,7 @@ from django.urls import re_path
 from .views import (
     BotView,
     ConversationListView,
+    MessageFileView,
     MessageListView,
     SendMessageView,
     TemplateListView,
@@ -27,6 +28,11 @@ urlpatterns = [
         rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/messages/$",
         MessageListView.as_view(),
         name="message-list",
+    ),
+    re_path(
+        rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/messages/(?P<message_id>\d+)/file/$",
+        MessageFileView.as_view(),
+        name="message-file",
     ),
     re_path(
         rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/send/$",
