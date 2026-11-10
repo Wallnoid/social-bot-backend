@@ -243,3 +243,25 @@ def test_api_docs_describe_pausing_and_resuming():
     state = named(named(ok)["properties"]["data"])
     assert {"bot_paused", "bot_paused_until", "paused_by"} <= set(state["properties"])
     assert {"400", "404"} <= set(operation["responses"])
+
+
+def test_reading_one_message_still_returns_the_bot_state_of_the_chat(tenant, meta_app):
+    link = add_account(tenant, meta_app, "111", name="Front desk")
+    add_message(link, CLIENT, "First")
+    add_message(link, CLIENT, "Second")
+    member = client_for(
+        add_member(
+            tenant, "member@acme.test", Membership.Role.AGENT, first_name="Rosa", last_name="Vega"
+        )
+    )
+    assert set_bot(member, link, True, minutes=60).status_code == 200
+
+    response = member.get(messages_url("whatsapp", CLIENT), {"account": str(link.id), "limit": 1})
+
+    assert response.status_code == 200
+    data = response.data["data"]
+    assert [message["text"] for message in data["messages"]] == ["Second"]
+    assert data["has_more"] is True
+    assert data["bot_paused"] is True
+    assert data["bot_paused_until"] is not None
+    assert data["paused_by"] == "Rosa Vega"
