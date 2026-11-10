@@ -48,6 +48,7 @@ Summary of the most critical ones (full detail in the imported file below):
 - Password links use Django's token generator; their lifetime comes from `PASSWORD_RESET_TIMEOUT` in `.env` and emails link to `FRONTEND_URL`. Outgoing email uses the SMTP settings from `.env`; local defaults to the console.
 - The active business comes from the `X-Tenant-ID` header; views opt in with `HasActiveTenant` (`apps/tenants/permissions.py`), which sets `request.tenant` and `request.membership`.
 - Invitation expiry comes from `INVITATION_TIMEOUT` in `.env`; a view that needs an admin of the active business adds `IsTenantAdmin` after `HasActiveTenant`.
+- The refresh token travels only in the httpOnly cookie `refresh_token` (`SameSite=Strict`, path `/api/v1/accounts/`, `Secure` from `AUTH_REFRESH_COOKIE_SECURE`), never in a body; refresh and logout require the `X-Requested-With` header, and the access token goes in the `Authorization` header.
 - Per-area rules live in `.claude/rules/`.
 
 ## Detailed documentation
