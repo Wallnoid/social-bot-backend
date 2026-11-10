@@ -2,14 +2,16 @@
 Tests for creating businesses (tenants) from the Django admin.
 """
 
+from datetime import timedelta
 from unittest import mock
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 from wanps.messaging.models import App
 
-from apps.tenants.models import Membership, Tenant
+from apps.tenants.models import Invitation, Membership, Tenant
 
 User = get_user_model()
 
@@ -282,9 +284,137 @@ def test_admin_sets_the_business_own_meta_app(staff_client):
             "meta_app": str(app.pk),
             "memberships-TOTAL_FORMS": "0",
             "memberships-INITIAL_FORMS": "0",
+            "invitations-TOTAL_FORMS": "0",
+            "invitations-INITIAL_FORMS": "0",
         },
     )
 
     assert response.status_code == 302
     tenant.refresh_from_db()
     assert tenant.meta_app == app
+
+
+def edit_business(client, tenant, new=(), cancel=()):
+    """Save the business edit page, inviting `new` (email, role) and cancelling `cancel`."""
+    pending = list(Invitation.pending().filter(tenant=tenant).order_by("created_at"))
+    data = {
+        "name": tenant.name,
+        "industry": tenant.industry,
+        "description": tenant.description,
+        "memberships-TOTAL_FORMS": "0",
+        "memberships-INITIAL_FORMS": "0",
+        "invitations-TOTAL_FORMS": str(len(pending) + len(new)),
+        "invitations-INITIAL_FORMS": str(len(pending)),
+    }
+    for index, invitation in enumerate(pending):
+        data[f"invitations-{index}-id"] = str(invitation.pk)
+        data[f"invitations-{index}-tenant"] = str(tenant.pk)
+        if invitation in cancel:
+            data[f"invitations-{index}-DELETE"] = "on"
+    for index, (email, role) in enumerate(new, start=len(pending)):
+        data[f"invitations-{index}-tenant"] = str(tenant.pk)
+        data[f"invitations-{index}-email"] = email
+        data[f"invitations-{index}-role"] = role
+    return client.post(reverse("admin:tenants_tenant_change", args=[tenant.pk]), data, follow=True)
+
+
+@pytest.fixture
+def business():
+    return Tenant.objects.create(name="Acme Dental")
+
+
+def invite(tenant, email, **fields):
+    return Invitation.objects.create(
+        tenant=tenant, email=email, role="agent", invited_by=User.objects.get(), **fields
+    )
+
+
+@pytest.mark.django_db
+def test_admin_invites_a_person_to_an_existing_business(staff_client, business, mailoutbox):
+    response = edit_business(staff_client, business, new=[("New.Agent@Acme.test", "agent")])
+
+    assert response.status_code == 200
+    invitation = Invitation.objects.get(tenant=business)
+    assert (invitation.email, invitation.role) == ("new.agent@acme.test", "agent")
+    assert invitation.invited_by.email == "staff@example.com"
+    assert len(mailoutbox) == 1
+    assert mailoutbox[0].to == ["new.agent@acme.test"]
+    assert invitation.token in mailoutbox[0].body
+
+
+@pytest.mark.django_db
+def test_admin_rejects_inviting_a_member(staff_client, business, mailoutbox):
+    member = User.objects.create_user(email="agent@acme.test", password="x-pass-123")
+    Membership.objects.create(tenant=business, user=member, role="agent")
+
+    response = edit_business(staff_client, business, new=[("AGENT@acme.test", "admin")])
+
+    assert "already a member of this business" in response.content.decode()
+    assert not Invitation.objects.exists()
+    assert mailoutbox == []
+
+
+@pytest.mark.django_db
+def test_admin_rejects_a_second_pending_invitation(staff_client, business, mailoutbox):
+    invite(business, "agent@acme.test")
+
+    response = edit_business(staff_client, business, new=[("agent@acme.test", "agent")])
+
+    assert "already has a pending invitation" in response.content.decode()
+    assert Invitation.objects.count() == 1
+    assert mailoutbox == []
+
+
+@pytest.mark.django_db
+def test_admin_rejects_inviting_a_deactivated_user(staff_client, business, mailoutbox):
+    User.objects.create_user(email="gone@acme.test", is_active=False)
+
+    response = edit_business(staff_client, business, new=[("gone@acme.test", "agent")])
+
+    assert "deactivated" in response.content.decode()
+    assert not Invitation.objects.exists()
+    assert mailoutbox == []
+
+
+@pytest.mark.django_db
+def test_admin_rejects_the_same_email_twice_in_one_save(staff_client, business, mailoutbox):
+    response = edit_business(
+        staff_client,
+        business,
+        new=[("agent@acme.test", "agent"), ("Agent@acme.test", "admin")],
+    )
+
+    assert "invited more than once" in response.content.decode()
+    assert not Invitation.objects.exists()
+    assert mailoutbox == []
+
+
+@pytest.mark.django_db
+def test_admin_cancels_a_pending_invitation(staff_client, business):
+    invitation = invite(business, "agent@acme.test")
+
+    edit_business(staff_client, business, cancel=[invitation])
+
+    assert not Invitation.pending().exists()
+    assert Invitation.all_objects.get(pk=invitation.pk).is_deleted
+
+
+@pytest.mark.django_db
+def test_admin_cancels_the_invitation_when_its_email_cannot_be_sent(staff_client, business):
+    with mock.patch("apps.tenants.admin.send_invitation_email", side_effect=OSError("SMTP down")):
+        response = edit_business(staff_client, business, new=[("agent@acme.test", "agent")])
+
+    assert "could not be sent" in response.content.decode()
+    assert not Invitation.pending().exists()
+
+
+@pytest.mark.django_db
+def test_admin_lists_only_pending_invitations(staff_client, business):
+    invite(business, "pending@acme.test")
+    invite(business, "expired@acme.test", expires_at=timezone.now() - timedelta(minutes=1))
+
+    response = staff_client.get(reverse("admin:tenants_tenant_change", args=[business.pk]))
+
+    page = response.content.decode()
+    assert "pending@acme.test" in page
+    assert "expired@acme.test" not in page

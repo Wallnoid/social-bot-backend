@@ -2,6 +2,8 @@
 Tests for the accounts admin.
 """
 
+from unittest import mock
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -63,3 +65,39 @@ def test_admin_stores_edited_user_email_in_lowercase(staff_client):
     assert response.status_code == 302
     user.refresh_from_db()
     assert user.email == "newowner@acme.test"
+
+
+def send_set_password_link(client, *users):
+    return client.post(
+        reverse("admin:accounts_user_changelist"),
+        {"action": "send_set_password_link", "_selected_action": [str(u.pk) for u in users]},
+        follow=True,
+    )
+
+
+@pytest.mark.django_db
+def test_admin_action_sends_set_password_email_to_active_users(staff_client, mailoutbox):
+    no_password = User.objects.create_user(email="new@acme.test", first_name="Nora")
+    with_password = User.objects.create_user(email="old@acme.test", password="old-pass-123")
+    inactive = User.objects.create_user(email="gone@acme.test", is_active=False)
+
+    response = send_set_password_link(staff_client, no_password, with_password, inactive)
+
+    page = response.content.decode()
+    assert sorted(m.to[0] for m in mailoutbox) == ["new@acme.test", "old@acme.test"]
+    assert "/set-password?uid=" in mailoutbox[0].body
+    assert "sent to 2 user(s)" in page
+    assert "Skipped 1 deactivated user(s)" in page
+
+
+@pytest.mark.django_db
+def test_admin_action_reports_users_whose_email_failed(staff_client, mailoutbox):
+    user = User.objects.create_user(email="new@acme.test")
+
+    with mock.patch(
+        "apps.accounts.admin.send_set_password_email", side_effect=OSError("SMTP down")
+    ):
+        response = send_set_password_link(staff_client, user)
+
+    assert "could not be sent to: new@acme.test" in response.content.decode()
+    assert mailoutbox == []
