@@ -28,6 +28,8 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
+from apps.core.throttling import BurstAnonRateThrottle
+
 ACCESS_ONLY = inline_serializer("AccessToken", {"access": serializers.CharField()})
 
 CUSTOM_HEADER = OpenApiParameter(
@@ -89,6 +91,8 @@ def start_new_session(response, user):
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     """Login: the access token in the body, the refresh token in the cookie."""
+
+    throttle_classes = [BurstAnonRateThrottle]
 
     @extend_schema(responses={200: ACCESS_ONLY})
     def post(self, request, *args, **kwargs):

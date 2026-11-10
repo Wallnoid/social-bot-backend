@@ -220,6 +220,11 @@ REST_FRAMEWORK = {
         "anon": "100/hour",
         "user": "1000/hour",
     },
+    # How many reverse proxies sit in front of the API. With 0 the limits identify a client by
+    # its socket address. Never leave it unset: DRF would then trust the whole X-Forwarded-For
+    # header, which the client controls, and could be dodged by changing it. Behind a proxy set
+    # it to their number, or every user shares the proxy's address and one limit.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
     # Schema
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Renderers
@@ -342,6 +347,10 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     "delete-expired-message-files": {
         "task": "apps.conversations.tasks.delete_expired_message_files",
+        "schedule": 24 * 60 * 60,  # every day
+    },
+    "flush-expired-tokens": {
+        "task": "apps.accounts.tasks.flush_expired_tokens",
         "schedule": 24 * 60 * 60,  # every day
     },
 }

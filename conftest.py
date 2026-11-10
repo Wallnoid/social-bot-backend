@@ -31,3 +31,11 @@ def meta_is_not_faked_unless_a_test_asks():
     from apps.devtools import fake_meta
 
     fake_meta.uninstall()
+
+
+@pytest.fixture(autouse=True)
+def throttle_counters_start_from_zero():
+    """Rate limit counters live in the cache; every test starts with none."""
+    from django.core.cache import cache
+
+    cache.clear()

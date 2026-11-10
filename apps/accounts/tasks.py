@@ -6,6 +6,7 @@ import logging
 
 from celery import shared_task
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 
 from .emails import send_password_reset_email
 
@@ -25,3 +26,9 @@ def send_password_reset_email_to(email: str) -> None:
         send_password_reset_email(user)
     except Exception:
         logger.exception("Could not send password reset email to %s", user.pk)
+
+
+@shared_task(ignore_result=True)
+def flush_expired_tokens() -> None:
+    """Delete the expired refresh tokens (and their revocations), so the tables do not grow forever."""
+    call_command("flushexpiredtokens")
