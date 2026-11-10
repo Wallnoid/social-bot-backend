@@ -18,11 +18,33 @@ def format_validity(seconds):
     return f"{hours} {'hora' if hours == 1 else 'horas'}"
 
 
-def send_set_password_email(user):
-    """Email the user a one-time link to create their password."""
+def set_password_link(user):
+    """A one-time link to the frontend page that creates the user's password."""
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    link = f"{settings.FRONTEND_URL}/set-password?uid={uid}&token={token}"
+    return f"{settings.FRONTEND_URL}/set-password?uid={uid}&token={token}"
+
+
+def send_password_reset_email(user):
+    """Email the user a one-time link to reset a forgotten password."""
+    send_mail(
+        subject="Restablece tu contraseña de Social Bot",
+        message=(
+            f"Hola {user.first_name},\n\n"
+            "Recibimos una solicitud para restablecer tu contraseña de Social Bot. "
+            "Crea una nueva con este enlace "
+            f"(válido por {format_validity(settings.PASSWORD_RESET_TIMEOUT)}):\n\n"
+            f"{set_password_link(user)}\n\n"
+            "Si no lo pediste, ignora este correo: tu contraseña no cambia."
+        ),
+        from_email=None,
+        recipient_list=[user.email],
+    )
+
+
+def send_set_password_email(user):
+    """Email the user a one-time link to create their password."""
+    link = set_password_link(user)
     send_mail(
         subject="Crea tu contraseña de Social Bot",
         message=(

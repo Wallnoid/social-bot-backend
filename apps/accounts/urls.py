@@ -15,7 +15,7 @@ from .token_views import (
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
 )
-from .views import SetPasswordView, UserViewSet
+from .views import PasswordResetView, SetPasswordView, UserViewSet
 
 app_name = "accounts"
 
@@ -24,6 +24,7 @@ router.register(r"users", UserViewSet, basename="user")
 
 urlpatterns = [
     # Authentication
+    path("password-reset/", PasswordResetView.as_view(), name="password_reset"),
     path("set-password/", SetPasswordView.as_view(), name="set_password"),
     path("token/", CookieTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),

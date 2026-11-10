@@ -126,6 +126,12 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 
+class PasswordResetSerializer(serializers.Serializer):
+    """Serializer for asking for a link to reset a forgotten password."""
+
+    email = serializers.EmailField()
+
+
 class SetPasswordSerializer(serializers.Serializer):
     """
     Serializer for creating a password from the link sent by email.

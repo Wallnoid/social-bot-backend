@@ -8,7 +8,8 @@ Provides:
 """
 
 from django.contrib.auth import get_user_model
-from rest_framework import generics, mixins, permissions, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, mixins, permissions, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -17,12 +18,47 @@ from apps.core.throttling import BurstAnonRateThrottle
 from .permissions import IsAccountOwner
 from .serializers import (
     ChangePasswordSerializer,
+    PasswordResetSerializer,
     SetPasswordSerializer,
     UserProfileSerializer,
     UserSerializer,
 )
+from .tasks import send_password_reset_email_to
 
 User = get_user_model()
+
+PASSWORD_RESET_MESSAGE = "If an account uses this email, we sent it a link to reset the password."
+
+
+class PasswordResetView(generics.GenericAPIView):
+    """
+    Ask for a link to reset a forgotten password.
+
+    POST /api/v1/accounts/password-reset/
+
+    The answer is the same whether the email has an account or not, so it does not
+    reveal who uses the suite. No authentication, so a stale session token in the
+    browser does not block it. The link leads to set-password.
+    """
+
+    serializer_class = PasswordResetSerializer
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [BurstAnonRateThrottle]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "PasswordResetResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        send_password_reset_email_to.delay(serializer.validated_data["email"])
+        return Response({"success": True, "message": PASSWORD_RESET_MESSAGE})
 
 
 class SetPasswordView(generics.GenericAPIView):
