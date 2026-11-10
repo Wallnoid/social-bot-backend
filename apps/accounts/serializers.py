@@ -11,11 +11,31 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
-from rest_framework.exceptions import ErrorDetail
+from rest_framework.exceptions import AuthenticationFailed, ErrorDetail
+from rest_framework_simplejwt import serializers as jwt_serializers
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
+from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from apps.core.utils import password_error_details
 
 User = get_user_model()
+
+
+class TokenRefreshSerializer(jwt_serializers.TokenRefreshSerializer):
+    """
+    Refresh that also rejects tokens issued before the last password change.
+    SimpleJWT checks that only on access tokens, so an old refresh token would
+    keep handing out access tokens that are rejected right away.
+    """
+
+    def validate(self, attrs):
+        refresh = self.token_class(attrs["refresh"])
+        user = User.objects.filter(pk=refresh.payload.get(jwt_settings.USER_ID_CLAIM)).first()
+        if user is not None and refresh.payload.get(
+            jwt_settings.REVOKE_TOKEN_CLAIM
+        ) != get_md5_hash_password(user.password):
+            raise AuthenticationFailed("The user's password has been changed.", "password_changed")
+        return super().validate(attrs)
 
 
 class UserSerializer(serializers.ModelSerializer):

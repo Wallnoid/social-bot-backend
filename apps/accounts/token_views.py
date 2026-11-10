@@ -8,6 +8,7 @@ refresh token travels: in a cookie that the page cannot read, never in a body.
 import contextlib
 
 from django.conf import settings
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -19,6 +20,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import (
     TokenBlacklistView,
@@ -65,6 +67,24 @@ def set_refresh_cookie(response, token):
         httponly=True,
         **cookie_scope(),
     )
+
+
+def revoke_all_refresh_tokens(user):
+    """Close every session of the user: their unexpired refresh tokens can no longer refresh."""
+    still_valid = OutstandingToken.objects.filter(
+        user=user, expires_at__gt=timezone.now(), blacklistedtoken__isnull=True
+    )
+    BlacklistedToken.objects.bulk_create(
+        [BlacklistedToken(token=token) for token in still_valid], ignore_conflicts=True
+    )
+
+
+def start_new_session(response, user):
+    """Give this device a fresh session: the access token in the body, the refresh in the cookie."""
+    refresh = RefreshToken.for_user(user)
+    response.data["access"] = str(refresh.access_token)
+    set_refresh_cookie(response, str(refresh))
+    return response
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):

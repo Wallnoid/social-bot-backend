@@ -8,6 +8,7 @@ Provides:
 """
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, mixins, permissions, serializers, viewsets
 from rest_framework.decorators import action
@@ -24,6 +25,7 @@ from .serializers import (
     UserSerializer,
 )
 from .tasks import send_password_reset_email_to
+from .token_views import revoke_all_refresh_tokens, start_new_session
 
 User = get_user_model()
 
@@ -84,8 +86,10 @@ class SetPasswordView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
-        user.set_password(serializer.validated_data["new_password"])
-        user.save()
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["new_password"])
+            user.save()
+            revoke_all_refresh_tokens(user)
         return Response(
             {"success": True, "message": "Password created successfully."}
         )
@@ -153,6 +157,18 @@ class UserViewSet(
             }
         )
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "ChangePasswordResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "message": serializers.CharField(),
+                    "access": serializers.CharField(),
+                },
+            )
+        }
+    )
     @action(
         detail=False,
         methods=["post"],
@@ -163,16 +179,18 @@ class UserViewSet(
         Change the current user's password.
 
         POST /api/v1/accounts/users/me/change-password/
+
+        Every other session is closed. This device gets a new access token in the
+        body and a new refresh cookie, so it stays logged in.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        request.user.set_password(serializer.validated_data["new_password"])
-        request.user.save()
+        user = request.user
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["new_password"])
+            user.save()
+            revoke_all_refresh_tokens(user)
 
-        return Response(
-            {
-                "success": True,
-                "message": "Password changed successfully.",
-            }
-        )
+        response = Response({"success": True, "message": "Password changed successfully."})
+        return start_new_session(response, user)

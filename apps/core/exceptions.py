@@ -63,6 +63,10 @@ def custom_exception_handler(exc, context):
             error_payload["errors"] = response.data
         if isinstance(exc, APIException) and not isinstance(exc, DRFValidationError):
             error_payload["code"] = exc.get_codes()
+            simplejwt_detail = _simplejwt_detail(exc)
+            if simplejwt_detail is not None:
+                error_payload["message"] = str(simplejwt_detail["detail"])
+                error_payload["code"] = str(simplejwt_detail["code"])
 
         response.data = error_payload
 
@@ -84,6 +88,17 @@ def custom_exception_handler(exc, context):
         )
 
     return response
+
+
+def _simplejwt_detail(exc):
+    """
+    SimpleJWT's token errors carry a dict with the message and the real code
+    (for example `token_not_valid` or `password_changed`); return it, or None.
+    """
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, dict) and "detail" in detail and "code" in detail:
+        return detail
+    return None
 
 
 def _get_error_message(exc, response):

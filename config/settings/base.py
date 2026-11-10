@@ -253,6 +253,10 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
     "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
+    # Tokens carry a claim derived from the password hash: changing the password cuts every
+    # session at once. Our refresh serializer checks the claim too (SimpleJWT only checks access).
+    "CHECK_REVOKE_TOKEN": True,
+    "TOKEN_REFRESH_SERIALIZER": "apps.accounts.serializers.TokenRefreshSerializer",
 }
 
 # The refresh token travels in an httpOnly cookie, never in a response body. The cookie only
