@@ -158,7 +158,11 @@ class ConversationListView(APIView):
             offset=query.validated_data["offset"],
         )
         conversations = [
-            {**chat, "account": account_of(by_account[chat["account"]["id"]])}
+            {
+                **chat,
+                "contact_name": chat["contact_name"] or GENERIC_NAMES.get(channel, ""),
+                "account": account_of(by_account[chat["account"]["id"]]),
+            }
             for chat in found["conversations"]
         ]
         data = {
@@ -205,6 +209,9 @@ NOT_INLINE = ("image/svg+xml",)
 
 
 MEGABYTE = 1024 * 1024
+
+# What a chat shows while Meta has not given the name of the client (shown, never saved)
+GENERIC_NAMES = {"messenger": "Messenger user", "instagram": "Instagram user"}
 
 
 class MessageFileView(APIView):

@@ -89,7 +89,10 @@ class ConversationSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
     channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
     contact_id = serializers.CharField()
-    contact_name = serializers.CharField()
+    contact_name = serializers.CharField(
+        help_text="The name of the client. While Meta has not given it, Messenger shows "
+        "'Messenger user' and Instagram 'Instagram user'; WhatsApp sends it with each message."
+    )
     last_message = InboxMessageSerializer()
     window_open = serializers.BooleanField()
     bot_paused = serializers.BooleanField()
