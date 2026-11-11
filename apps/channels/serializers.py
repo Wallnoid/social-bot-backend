@@ -11,12 +11,14 @@ from .models import ChannelAccount
 
 ALREADY_CONNECTED = "This account is already connected."
 
+# The wanps-core channels this backend installs (one list, so the API docs name it once)
+CHANNEL_CHOICES = ["whatsapp", "messenger", "instagram"]
+
 
 class ConnectAccountSerializer(serializers.ModelSerializer):
     """Data a business admin types to connect a number, page or Instagram account."""
 
-    # The wanps-core channels this backend installs
-    channel = serializers.ChoiceField(choices=["whatsapp", "messenger", "instagram"])
+    channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
 
     class Meta:
         model = Account
@@ -64,7 +66,9 @@ class UpdateAccountSerializer(serializers.ModelSerializer):
 class ChannelAccountSerializer(serializers.ModelSerializer):
     """A connected account as the business sees it: never its token."""
 
-    channel = serializers.CharField(source="account.channel", read_only=True)
+    channel = serializers.ChoiceField(
+        choices=CHANNEL_CHOICES, source="account.channel", read_only=True
+    )
     name = serializers.CharField(source="account.name", read_only=True)
     external_id = serializers.CharField(source="account.external_id", read_only=True)
     business_id = serializers.CharField(source="account.business_id", read_only=True)

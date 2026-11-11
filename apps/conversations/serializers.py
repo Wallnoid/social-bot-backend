@@ -4,6 +4,12 @@ the 0.3 duplicate names that `wanps.inbox` also includes.
 """
 
 from rest_framework import serializers
+from wanps.messaging.attachments import PAGE_FILE_KINDS, WHATSAPP_FILE_KINDS
+from wanps.messaging.models import Message
+
+from apps.channels.serializers import CHANNEL_CHOICES
+
+FILE_KINDS = list(dict.fromkeys([*WHATSAPP_FILE_KINDS, *PAGE_FILE_KINDS.values()]))
 
 
 class ConversationsQuerySerializer(serializers.Serializer):
@@ -35,24 +41,41 @@ class FileQuerySerializer(serializers.Serializer):
 class InboxAccountSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField()
-    channel = serializers.CharField()
+    channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
 
 
 class MessageFileSerializer(serializers.Serializer):
     """The file a message carries. The type and the name are empty when Meta does not send them."""
 
-    kind = serializers.CharField(help_text="image, audio, video, document or sticker.")
+    kind = serializers.ChoiceField(choices=FILE_KINDS)
     mime_type = serializers.CharField()
     filename = serializers.CharField()
 
 
 class InboxMessageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    direction = serializers.CharField()
-    type = serializers.CharField()
-    text = serializers.CharField()
-    status = serializers.CharField()
-    sent_by = serializers.CharField()
+    direction = serializers.ChoiceField(
+        choices=[Message.DIRECTION_IN, Message.DIRECTION_OUT],
+        help_text="in: the client wrote it. out: the business sent it, a person or the bot.",
+    )
+    type = serializers.CharField(
+        help_text="What the message is: text, image, audio, video, document, sticker, location, "
+        "contacts, button, interactive or template. Meta may send other values, so do not treat "
+        "this as a closed list."
+    )
+    text = serializers.CharField(
+        help_text="The text, or the caption of a file. A message with a file and no caption "
+        "carries a marker such as [image] or [sticker]: show the file (see `file`), not the marker."
+    )
+    status = serializers.CharField(
+        help_text="Delivery of a message the business sent: sent, delivered, read or failed. "
+        "Empty for incoming messages. Meta may send other values, so do not treat this as a "
+        "closed list."
+    )
+    sent_by = serializers.CharField(
+        help_text="Full name of the person who sent it by hand. Empty for the bot and for "
+        "incoming messages."
+    )
     created_at = serializers.DateTimeField()
 
 
@@ -64,7 +87,7 @@ class ChatMessageSerializer(InboxMessageSerializer):
 
 class ConversationSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
-    channel = serializers.CharField()
+    channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
     contact_id = serializers.CharField()
     contact_name = serializers.CharField()
     last_message = InboxMessageSerializer()
@@ -76,7 +99,7 @@ class ConversationSerializer(serializers.Serializer):
 
 class ChatMessagesSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
-    channel = serializers.CharField()
+    channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
     contact_id = serializers.CharField()
     window_open = serializers.BooleanField()
     bot_paused = serializers.BooleanField()
@@ -128,7 +151,7 @@ class PauseBotSerializer(serializers.Serializer):
 
 class BotStateSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
-    channel = serializers.CharField()
+    channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
     contact_id = serializers.CharField()
     bot_paused = serializers.BooleanField()
     bot_paused_until = serializers.DateTimeField(allow_null=True)

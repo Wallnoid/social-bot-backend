@@ -10,6 +10,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed, ErrorDetail
 from rest_framework_simplejwt import serializers as jwt_serializers
@@ -17,6 +18,7 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from apps.core.utils import password_error_details
+from apps.tenants.models import Membership
 
 User = get_user_model()
 
@@ -72,6 +74,14 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
+class UserBusinessSerializer(serializers.Serializer):
+    """A business the user belongs to and their role in it."""
+
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    role = serializers.ChoiceField(choices=Membership.Role.choices)
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for updating user profile.
@@ -105,6 +115,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    @extend_schema_field(UserBusinessSerializer(many=True))
     def get_tenants(self, user):
         """Businesses the user belongs to, with their role in each."""
         return [

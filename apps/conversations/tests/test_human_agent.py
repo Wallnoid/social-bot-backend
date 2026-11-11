@@ -194,3 +194,42 @@ def test_a_contact_that_never_wrote_cannot_be_answered_even_with_the_option(
     assert "no message from the client" in response.data["message"]
     post.assert_not_called()
     assert not Message.objects.filter(direction=Message.DIRECTION_OUT).exists()
+
+
+@pytest.mark.parametrize(
+    ("channel", "days_ago", "human_agent", "code"),
+    [
+        ("whatsapp", 2, False, "window_closed"),
+        ("messenger", 2, False, "window_closed"),
+        ("messenger", 8, True, "human_agent_expired"),
+        ("instagram", 8, True, "human_agent_expired"),
+    ],
+)
+def test_each_conflict_carries_a_stable_code_so_the_frontend_does_not_read_the_text(
+    tenant, meta_app, channel, days_ago, human_agent, code
+):
+    link = add_account(tenant, meta_app, "111", channel=channel)
+    chat_last_written(link, days_ago=days_ago)
+    member = client_for(add_member(tenant, "member@acme.test", Membership.Role.AGENT))
+    body = {"account": str(link.id), "text": "Hola", "human_agent": human_agent}
+
+    with meta_replies(channel):
+        response = member.post(send_url(channel), body, format="json")
+
+    assert response.status_code == 409
+    assert response.data["code"] == code
+
+
+def test_a_contact_that_never_wrote_gets_the_expired_code_with_the_option(tenant, meta_app):
+    link = add_account(tenant, meta_app, "111", channel="messenger")
+    chat_last_written(link, days_ago=1)  # another client wrote; this contact never did
+    member = client_for(add_member(tenant, "member@acme.test", Membership.Role.AGENT))
+
+    with meta_replies("messenger"):
+        response = member.post(
+            send_url("messenger", "999000999"),
+            {"account": str(link.id), "text": "Hola", "human_agent": True},
+            format="json",
+        )
+
+    assert (response.status_code, response.data["code"]) == (409, "human_agent_expired")

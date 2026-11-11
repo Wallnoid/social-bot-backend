@@ -228,7 +228,7 @@ REST_FRAMEWORK = {
     # it to their number, or every user shares the proxy's address and one limit.
     "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
     # Schema
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "apps.tenants.schema.TenantAutoSchema",
     # Renderers
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",

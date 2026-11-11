@@ -48,6 +48,24 @@ class CurrentTenantView(APIView):
 
     permission_classes = [IsAuthenticated, HasActiveTenant]
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "CurrentTenantResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer(
+                        "CurrentTenant",
+                        {
+                            "id": serializers.UUIDField(),
+                            "name": serializers.CharField(),
+                            "role": serializers.ChoiceField(choices=Membership.Role.choices),
+                        },
+                    ),
+                },
+            )
+        }
+    )
     def get(self, request):
         return Response(
             {

@@ -132,6 +132,29 @@ class UserViewSet(
             return ChangePasswordSerializer
         return UserSerializer
 
+    @extend_schema(
+        methods=["GET"],
+        responses={
+            200: inline_serializer(
+                "UserProfileResponse",
+                {"success": serializers.BooleanField(), "data": UserProfileSerializer()},
+            )
+        },
+    )
+    @extend_schema(
+        methods=["PUT", "PATCH"],
+        request=UserProfileSerializer,
+        responses={
+            200: inline_serializer(
+                "UserProfileUpdatedResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "message": serializers.CharField(),
+                    "data": UserProfileSerializer(),
+                },
+            )
+        },
+    )
     @action(detail=False, methods=["get", "put", "patch"])
     def me(self, request):
         """

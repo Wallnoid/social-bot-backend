@@ -10,6 +10,7 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404, HttpResponse
 from django.utils.http import content_disposition_header
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException, ValidationError
@@ -203,15 +204,32 @@ INLINE_TYPES = ("image/", "audio/", "video/")
 NOT_INLINE = ("image/svg+xml",)
 
 
+MEGABYTE = 1024 * 1024
+
+
 class MessageFileView(APIView):
     """GET .../messages/<id>/file/ → the file a message carries, as its own bytes."""
 
     permission_classes = [IsAuthenticated, HasActiveTenant]
 
     @extend_schema(
+        description=(
+            "The file a message carries (its marker is the `file` field of the message), as its "
+            "own bytes: there is no public address for it, so ask for it here with "
+            "`Authorization` and `X-Tenant-ID` and show the answer as a blob. The first time it is "
+            "opened the backend downloads it from Meta and saves it on the server; after that it "
+            "is served from there, without calling Meta. Saved files are deleted after "
+            f"{settings.MESSAGE_FILE_RETENTION_DAYS} days (they are asked from Meta again if "
+            f"opened later) and nothing over {settings.MESSAGE_FILE_MAX_BYTES // MEGABYTE} MB "
+            "is saved. "
+            "Pictures, sounds and videos can be shown in the page; anything else comes as a "
+            "download, with its file name."
+        ),
         parameters=[FileQuerySerializer],
         responses={
-            (200, "*/*"): OpenApiResponse(description="The bytes of the file."),
+            (200, "*/*"): OpenApiResponse(
+                response=OpenApiTypes.BINARY, description="The bytes of the file."
+            ),
             404: OpenApiResponse(description="No such message, or it carries no file."),
             410: OpenApiResponse(description="Meta does not keep the file any more."),
             413: OpenApiResponse(description="The file is bigger than the cap and is not saved."),
@@ -348,6 +366,12 @@ class ReplyWindowClosed(APIException):
     default_code = "window_closed"
 
 
+class HumanAgentExpired(ReplyWindowClosed):
+    """Even the human-agent option cannot help: the client's last message is too old."""
+
+    default_code = "human_agent_expired"
+
+
 USE_HUMAN_AGENT = (
     "The 24-hour window is closed: reply as a person with the human-agent option "
     "(up to 7 days after the client's last message)."
@@ -394,9 +418,11 @@ class SendMessageView(APIView):
                 description="The account is not one of the business's on this channel."
             ),
             409: OpenApiResponse(
-                description="The 24-hour window is closed. On Messenger and Instagram, use the "
-                "human-agent option; if it is used and more than 7 days have passed, nothing "
-                "can be sent."
+                description="The 24-hour window is closed. The `code` of the error tells the "
+                "case: `window_closed` (on WhatsApp, a template is the way out; on Messenger and "
+                "Instagram, use the human-agent option) or `human_agent_expired` (the option was "
+                "used and the client's last message is more than 7 days old, or there is none: "
+                "nothing can be sent)."
             ),
             502: OpenApiResponse(description="The channel could not deliver the message."),
         },
@@ -431,9 +457,9 @@ class SendMessageView(APIView):
                 raise ReplyWindowClosed from None
             # On these channels the option decides what is left: if it was already used,
             # the 7 days are over; if not, it can still be used
-            raise ReplyWindowClosed(
-                HUMAN_AGENT_EXPIRED if human_agent else USE_HUMAN_AGENT
-            ) from None
+            if human_agent:
+                raise HumanAgentExpired(HUMAN_AGENT_EXPIRED) from None
+            raise ReplyWindowClosed(USE_HUMAN_AGENT) from None
         except (WhatsAppError, MetaAPIError, requests.RequestException) as exc:
             # Only the kind of error: its text can carry the URL with the access token
             logger.warning(
