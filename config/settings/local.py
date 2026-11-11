@@ -14,7 +14,8 @@ from .base import env
 
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
+# The local hosts, plus the ones in ALLOWED_HOSTS of the .env (a tunnel such as ngrok, to try Meta's webhook)
+ALLOWED_HOSTS = list(dict.fromkeys(["localhost", "127.0.0.1", "0.0.0.0", *ALLOWED_HOSTS]))
 
 # =============================================================================
 # DATABASE (PostgreSQL via Docker)
