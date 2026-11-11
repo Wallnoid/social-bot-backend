@@ -382,7 +382,16 @@ CACHES = {
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://localhost:6379/1")]},
+        "CONFIG": {
+            "hosts": [
+                {
+                    "address": env("REDIS_URL", default="redis://localhost:6379/1"),
+                    # An idle connection waits 5 seconds at a time for a message. redis-py 8 cuts
+                    # every read after 5 seconds by default, which closed each socket that long
+                    "socket_timeout": 10,
+                }
+            ]
+        },
     },
 }
 

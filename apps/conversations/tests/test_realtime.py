@@ -427,3 +427,16 @@ def test_the_permit_is_redeemed_off_the_event_loop(tenant):
 
     assert async_to_sync(scenario)() is True
     assert seen == ["off the event loop"]
+
+
+def test_the_channel_layer_does_not_cut_its_own_wait_for_messages():
+    # An idle connection waits for a message in Redis for a few seconds at a time. redis-py 8 cuts
+    # every read after 5 seconds unless told otherwise, which closed each socket after 5 seconds
+    from channels_redis.core import RedisChannelLayer
+
+    from config.settings import base
+
+    host = base.CHANNEL_LAYERS["default"]["CONFIG"]["hosts"][0]
+
+    assert isinstance(host, dict)
+    assert host["socket_timeout"] > RedisChannelLayer.brpop_timeout
