@@ -6,17 +6,20 @@ from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from wanps.messaging.models import App
 
+from apps.tenants.models import Tenant
 from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
-from .models import ChannelAccount, meta_app_for
+from .models import ChannelAccount, SharedMetaApp, meta_app_for
 from .serializers import (
     ALREADY_CONNECTED,
     ChannelAccountSerializer,
     ConnectAccountSerializer,
+    MetaAppSerializer,
     UpdateAccountSerializer,
 )
 
@@ -160,3 +163,77 @@ class ChannelAccountDetailView(generics.GenericAPIView):
             )
             link.soft_delete()
         return Response({"success": True, "message": "Account disconnected."})
+
+
+def is_used_by_others(app, tenant):
+    """
+    Whether the Meta App is also used by the Social Bot team's shared app or by another business.
+
+    Such an app is not the business's own to see or change.
+    """
+    return (
+        SharedMetaApp.objects.filter(app=app).exists()
+        or Tenant.objects.filter(meta_app=app).exclude(pk=tenant.pk).exists()
+    )
+
+
+def envelope(name, data):
+    """The shape of a successful answer, for the API docs."""
+    return inline_serializer(name, {"success": serializers.BooleanField(), "data": data})
+
+
+class MetaAppView(generics.GenericAPIView):
+    """
+    GET /api/v1/channels/meta-app/ → the Meta App of the active business (null if it has none).
+    POST /api/v1/channels/meta-app/ → set it up.
+    PATCH /api/v1/channels/meta-app/ → edit it or deactivate it.
+    """
+
+    serializer_class = MetaAppSerializer
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+
+    @extend_schema(
+        responses={200: envelope("MetaAppReadResponse", MetaAppSerializer(allow_null=True))}
+    )
+    def get(self, request):
+        app = request.tenant.meta_app
+        if app is None:
+            return Response({"success": True, "data": None})
+        if is_used_by_others(app, request.tenant):
+            # Not this business's app to see or change: only enough to know it is in use
+            data = {"name": app.name, "is_active": app.is_active, "shared": True}
+        else:
+            data = self.get_serializer(app).data
+        return Response({"success": True, "data": data})
+
+    @extend_schema(responses={201: envelope("MetaAppCreatedResponse", MetaAppSerializer())})
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            # Locked, so two requests of the same business cannot each set one up
+            tenant = Tenant.objects.select_for_update(no_key=True).get(pk=request.tenant.pk)
+            if tenant.meta_app_id is not None:
+                raise ValidationError(
+                    {"non_field_errors": ["This business already has a Meta App. Edit it instead."]}
+                )
+            tenant.meta_app = serializer.save()
+            tenant.save(update_fields=["meta_app", "updated_at"])
+        return Response(
+            {"success": True, "data": self.get_serializer(tenant.meta_app).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(responses={200: envelope("MetaAppEditedResponse", MetaAppSerializer())})
+    def patch(self, request):
+        if request.tenant.meta_app_id is None:
+            raise NotFound("This business has no Meta App yet.")
+        with transaction.atomic():
+            # Locked, so the Social Bot team cannot share it with another business half way
+            app = App.objects.select_for_update(no_key=True).get(pk=request.tenant.meta_app_id)
+            if is_used_by_others(app, request.tenant):
+                raise PermissionDenied("This Meta App is shared with other businesses.")
+            serializer = self.get_serializer(app, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        return Response({"success": True, "data": serializer.data})

@@ -2,9 +2,10 @@
 Serializers for the channels app.
 """
 
+from django.urls import reverse
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
-from wanps.messaging.models import Account
+from wanps.messaging.models import Account, App
 
 from .models import ChannelAccount
 
@@ -72,3 +73,39 @@ class ChannelAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChannelAccount
         fields = ["id", "channel", "name", "external_id", "business_id", "is_active"]
+
+
+class MetaAppSerializer(serializers.ModelSerializer):
+    """The Meta App of a business: the secret goes in and never comes out."""
+
+    webhook_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = App
+        fields = [
+            "name",
+            "app_id",
+            "app_secret",
+            "verify_token",
+            "api_version",
+            "is_active",
+            "webhook_url",
+        ]
+        extra_kwargs = {
+            "app_id": {"required": True, "allow_blank": False},
+            "app_secret": {"write_only": True, "required": True, "allow_blank": False},
+            "verify_token": {"write_only": True, "required": True, "allow_blank": False},
+        }
+
+    def validate_app_id(self, value):
+        taken = App.objects.filter(app_id=value)
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            # Same answer whoever owns it
+            raise serializers.ValidationError("This Meta App is already registered.")
+        return value
+
+    def get_webhook_url(self, app) -> str:
+        path = reverse("messaging:meta-webhook", kwargs={"webhook_key": app.webhook_key})
+        return self.context["request"].build_absolute_uri(path)
