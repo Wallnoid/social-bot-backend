@@ -219,6 +219,7 @@ class InvitationAcceptView(generics.GenericAPIView):
                         "InvitationAcceptData",
                         {
                             "tenant": serializers.CharField(),
+                            "tenant_id": serializers.UUIDField(),
                             "role": serializers.ChoiceField(choices=Membership.Role.choices),
                         },
                     ),
@@ -251,7 +252,11 @@ class InvitationAcceptView(generics.GenericAPIView):
         return Response(
             {
                 "success": True,
-                "data": {"tenant": invitation.tenant.name, "role": invitation.role},
+                "data": {
+                    "tenant": invitation.tenant.name,
+                    "tenant_id": str(invitation.tenant_id),
+                    "role": invitation.role,
+                },
             },
             status=status.HTTP_201_CREATED,
         )

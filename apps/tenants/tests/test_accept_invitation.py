@@ -139,7 +139,11 @@ def test_new_person_joins_with_the_invited_role_and_can_log_in(api, invitation, 
     )
 
     assert response.status_code == 201
-    assert response.data["data"] == {"tenant": "Acme Dental", "role": "supervisor"}
+    assert response.data["data"] == {
+        "tenant": "Acme Dental",
+        "tenant_id": str(tenant.id),
+        "role": "supervisor",
+    }
     user = User.objects.get(email="new@acme.test")
     assert (user.first_name, user.last_name) == ("Ana", "Vera")
     assert Membership.objects.get(tenant=tenant, user=user).role == "supervisor"
@@ -203,7 +207,11 @@ def test_existing_user_logged_in_with_the_invited_email_joins(api, invitation, t
     )
 
     assert response.status_code == 201
-    assert response.data["data"] == {"tenant": "Acme Dental", "role": "supervisor"}
+    assert response.data["data"] == {
+        "tenant": "Acme Dental",
+        "tenant_id": str(tenant.id),
+        "role": "supervisor",
+    }
     assert Membership.objects.get(tenant=tenant, user=user).role == "supervisor"
     assert User.objects.filter(email__iexact="new@acme.test").count() == 1
     user.refresh_from_db()
@@ -379,6 +387,17 @@ def test_accepting_when_already_a_member_is_rejected(api, invitation, tenant):
     assert response.status_code == 400
     assert "already a member" in str(response.data["errors"])
     assert Membership.objects.get(tenant=tenant, user=user).role == "agent"
+
+
+def test_accepting_when_already_a_member_has_its_own_error_code(api, invitation, tenant):
+    user = User.objects.create_user(email="new@acme.test", password=PASSWORD)
+    Membership.objects.create(tenant=tenant, user=user, role=Membership.Role.AGENT)
+    log_in(api, "new@acme.test")
+
+    response = api.post(ACCEPT_URL, {"token": invitation.token}, format="json")
+
+    assert response.status_code == 400
+    assert response.data["error_codes"]["token"] == ["already_member"]
 
 
 def test_accept_is_rate_limited_when_logged_in(api, invitation):

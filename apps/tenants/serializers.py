@@ -127,7 +127,11 @@ class InvitationAcceptSerializer(InvitationLookupSerializer):
             and Membership.objects.filter(tenant=invitation.tenant, user=user).exists()
         ):
             raise serializers.ValidationError(
-                {"token": ["You are already a member of this business."]}
+                {
+                    "token": [
+                        ErrorDetail("You are already a member of this business.", "already_member")
+                    ]
+                }
             )
         if has_password:
             return attrs
