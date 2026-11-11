@@ -92,7 +92,11 @@ CELERY_TASK_ALWAYS_EAGER = False
 # STATIC FILES
 # =============================================================================
 
-STATICFILES_STORAGE = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+# Names with a hash of the content, so a new version is never served from the browser's cache
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
 
 # =============================================================================
 # LOGGING (Production-grade)

@@ -64,7 +64,7 @@ RUN mkdir -p /app/staticfiles /app/media /app/logs \
 COPY --chown=django:django . .
 
 # Collect static files
-RUN python manage.py collectstatic --noinput 2>/dev/null || true
+RUN python manage.py collectstatic --noinput
 
 # Switch to non-root user
 USER django
