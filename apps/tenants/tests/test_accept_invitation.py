@@ -467,3 +467,18 @@ def test_weak_password_error_carries_the_rule_code(api, invitation):
 
     assert response.status_code == 400
     assert "password_too_common" in response.data["error_codes"]["new_password"]
+
+
+@pytest.mark.django_db
+def test_the_admin_session_cookie_does_not_ask_for_a_csrf_token(admin_user):
+    api = APIClient(enforce_csrf_checks=True)
+    api.force_login(admin_user)
+
+    response = api.post(
+        "/api/v1/tenants/invitations/accept/",
+        {"token": "not-a-real-token"},
+        format="json",
+        HTTP_ORIGIN="http://localhost:5173",
+    )
+
+    assert response.status_code == 400

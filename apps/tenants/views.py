@@ -13,6 +13,7 @@ from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from apps.core.throttling import BurstAnonRateThrottle, BurstUserRateThrottle
 
@@ -202,6 +203,9 @@ class InvitationAcceptView(generics.GenericAPIView):
     """
 
     serializer_class = InvitationAcceptSerializer
+    # JWT only: an existing account sends its token, and the Django admin cookie must not ask
+    # the frontend for a CSRF token
+    authentication_classes = [JWTAuthentication]
     permission_classes = [AllowAny]
     throttle_classes = [BurstAnonRateThrottle, BurstUserRateThrottle]
 
