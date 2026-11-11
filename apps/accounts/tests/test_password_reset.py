@@ -140,3 +140,18 @@ def test_reset_requests_are_throttled(owner):
         assert ask_reset("owner@acme.test", api).status_code == status.HTTP_200_OK
 
     assert ask_reset("owner@acme.test", api).status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.django_db
+def test_the_admin_session_cookie_does_not_ask_set_password_for_a_csrf_token(admin_user):
+    api = APIClient(enforce_csrf_checks=True)
+    api.force_login(admin_user)
+
+    response = api.post(
+        "/api/v1/accounts/set-password/",
+        {"uid": "x", "token": "y", "new_password": "NewPass456!", "new_password_confirm": "NewPass456!"},
+        format="json",
+        HTTP_ORIGIN="http://localhost:5173",
+    )
+
+    assert response.status_code == 400

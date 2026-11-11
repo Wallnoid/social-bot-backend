@@ -71,6 +71,8 @@ class SetPasswordView(generics.GenericAPIView):
     """
 
     serializer_class = SetPasswordSerializer
+    # No authentication: the Django admin cookie must not ask the frontend for a CSRF token
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = [BurstAnonRateThrottle]
 
