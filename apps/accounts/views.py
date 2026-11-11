@@ -2,14 +2,15 @@
 Views for the accounts app.
 
 Provides:
-- User registration
 - User profile (me endpoint)
 - Password change
-- User list/detail (admin)
+- User detail/update (account owner)
 """
 
 from django.contrib.auth import get_user_model
-from rest_framework import generics, permissions, status, viewsets
+from django.db import transaction
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, mixins, permissions, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -18,50 +19,93 @@ from apps.core.throttling import BurstAnonRateThrottle
 from .permissions import IsAccountOwner
 from .serializers import (
     ChangePasswordSerializer,
-    UserCreateSerializer,
+    PasswordResetSerializer,
+    SetPasswordSerializer,
     UserProfileSerializer,
     UserSerializer,
 )
+from .tasks import send_password_reset_email_to
+from .token_views import revoke_all_refresh_tokens, start_new_session
 
 User = get_user_model()
 
+PASSWORD_RESET_MESSAGE = "If an account uses this email, we sent it a link to reset the password."
 
-class RegisterView(generics.CreateAPIView):
+
+class PasswordResetView(generics.GenericAPIView):
     """
-    Register a new user.
+    Ask for a link to reset a forgotten password.
 
-    POST /api/v1/accounts/register/
+    POST /api/v1/accounts/password-reset/
+
+    The answer is the same whether the email has an account or not, so it does not
+    reveal who uses the suite. No authentication, so a stale session token in the
+    browser does not block it. The link leads to set-password.
     """
 
-    queryset = User.objects.all()
-    serializer_class = UserCreateSerializer
+    serializer_class = PasswordResetSerializer
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = [BurstAnonRateThrottle]
 
-    def create(self, request, *args, **kwargs):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "PasswordResetResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        send_password_reset_email_to.delay(serializer.validated_data["email"])
+        return Response({"success": True, "message": PASSWORD_RESET_MESSAGE})
+
+
+class SetPasswordView(generics.GenericAPIView):
+    """
+    Create a password from the link sent by email.
+
+    POST /api/v1/accounts/set-password/
+    """
+
+    serializer_class = SetPasswordSerializer
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [BurstAnonRateThrottle]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "SetPasswordResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["new_password"])
+            user.save()
+            revoke_all_refresh_tokens(user)
         return Response(
-            {
-                "success": True,
-                "message": "User registered successfully.",
-                "data": UserSerializer(user).data,
-            },
-            status=status.HTTP_201_CREATED,
+            {"success": True, "message": "Password created successfully."}
         )
 
 
-class UserViewSet(viewsets.ModelViewSet):
+class UserViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
     """
     ViewSet for managing users.
 
     Endpoints:
-    - GET    /api/v1/accounts/users/         → List all users (admin only)
-    - POST   /api/v1/accounts/users/         → Create user (admin only)
     - GET    /api/v1/accounts/users/{id}/     → Retrieve user
     - PUT    /api/v1/accounts/users/{id}/     → Update user
-    - DELETE /api/v1/accounts/users/{id}/     → Delete user (soft delete)
     - GET    /api/v1/accounts/users/me/       → Current user profile
     - PUT    /api/v1/accounts/users/me/       → Update current user profile
     - POST   /api/v1/accounts/users/me/change-password/ → Change password
@@ -69,20 +113,17 @@ class UserViewSet(viewsets.ModelViewSet):
 
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    filterset_fields = ["is_active", "is_staff"]
-    search_fields = ["email", "first_name", "last_name", "username"]
-    ordering_fields = ["created_at", "email", "first_name"]
+
+    def get_queryset(self):
+        # Users only reach their own account; any other id looks nonexistent.
+        return User.objects.filter(pk=self.request.user.pk)
 
     def get_permissions(self):
-        if self.action in ["list", "create", "destroy"]:
-            return [permissions.IsAdminUser()]
         if self.action in ["retrieve", "update", "partial_update"]:
             return [permissions.IsAuthenticated(), IsAccountOwner()]
         return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
-        if self.action == "create":
-            return UserCreateSerializer
         if self.action in ["update", "partial_update", "me"]:
             return UserProfileSerializer
         if self.action == "change_password":
@@ -116,6 +157,18 @@ class UserViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "ChangePasswordResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "message": serializers.CharField(),
+                    "access": serializers.CharField(),
+                },
+            )
+        }
+    )
     @action(
         detail=False,
         methods=["post"],
@@ -126,29 +179,18 @@ class UserViewSet(viewsets.ModelViewSet):
         Change the current user's password.
 
         POST /api/v1/accounts/users/me/change-password/
+
+        Every other session is closed. This device gets a new access token in the
+        body and a new refresh cookie, so it stays logged in.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        request.user.set_password(serializer.validated_data["new_password"])
-        request.user.save()
+        user = request.user
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["new_password"])
+            user.save()
+            revoke_all_refresh_tokens(user)
 
-        return Response(
-            {
-                "success": True,
-                "message": "Password changed successfully.",
-            }
-        )
-
-    def destroy(self, request, *args, **kwargs):
-        """Soft delete a user (deactivate instead of hard delete)."""
-        user = self.get_object()
-        user.is_active = False
-        user.save(update_fields=["is_active", "updated_at"])
-        return Response(
-            {
-                "success": True,
-                "message": "User deactivated successfully.",
-            },
-            status=status.HTTP_200_OK,
-        )
+        response = Response({"success": True, "message": "Password changed successfully."})
+        return start_new_session(response, user)

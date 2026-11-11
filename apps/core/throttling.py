@@ -8,7 +8,7 @@ from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 class BurstAnonRateThrottle(AnonRateThrottle):
     """
     Rate limit for anonymous users making burst requests.
-    Useful for login/register endpoints to prevent brute force.
+    Useful for login endpoints to prevent brute force.
     """
 
     scope = "burst_anon"

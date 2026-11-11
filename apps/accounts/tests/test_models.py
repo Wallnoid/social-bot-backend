@@ -4,6 +4,7 @@ Tests for the accounts User model.
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 
 User = get_user_model()
 
@@ -25,6 +26,27 @@ class TestUserModel:
         assert user.is_active is True
         assert user.is_staff is False
         assert user.is_superuser is False
+
+    def test_create_user_stores_email_in_lowercase(self):
+        user = User.objects.create_user(
+            email="Owner@Acme.TEST",
+            password="testpass123",
+            first_name="Olivia",
+            last_name="Owner",
+        )
+        user.refresh_from_db()
+        assert user.email == "owner@acme.test"
+
+    def test_users_with_emails_differing_only_by_case_are_rejected(self):
+        # bulk_create skips User.save(), so the database constraint is what protects us.
+        User.objects.bulk_create(
+            [User(email="Owner@acme.test", first_name="Olivia", last_name="Owner")]
+        )
+
+        with pytest.raises(IntegrityError), transaction.atomic():
+            User.objects.bulk_create(
+                [User(email="owner@acme.test", first_name="Other", last_name="Owner")]
+            )
 
     def test_create_superuser(self):
         """Test creating a superuser."""

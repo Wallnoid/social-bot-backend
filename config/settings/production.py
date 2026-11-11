@@ -46,6 +46,8 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
+# The refresh token cookie (see AUTH_REFRESH_COOKIE_* in base.py) is never sent over plain HTTP
+AUTH_REFRESH_COOKIE_SECURE = True
 
 # Content Security
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -67,22 +69,15 @@ EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="django.core.mail.backends.smtp.EmailBackend",
 )
-EMAIL_HOST = env("EMAIL_HOST", default="smtp.gmail.com")
-EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@example.com")
 
 # =============================================================================
 # CACHING (Redis)
 # =============================================================================
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env("REDIS_URL"),
-    }
+# Only the default cache changes: base.py also defines `ws_tickets` (the permits of the inbox)
+CACHES["default"] = {
+    "BACKEND": "django.core.cache.backends.redis.RedisCache",
+    "LOCATION": env("REDIS_URL"),
 }
 
 # =============================================================================

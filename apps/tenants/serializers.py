@@ -1,0 +1,149 @@
+"""
+Serializers for the tenants app.
+"""
+
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.exceptions import ErrorDetail, NotAuthenticated, PermissionDenied
+
+from apps.core.utils import password_error_details
+
+from .models import Invitation, Membership
+
+User = get_user_model()
+
+
+class InviterSerializer(serializers.ModelSerializer):
+    """Who sent an invitation."""
+
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "email"]
+        read_only_fields = fields
+
+
+class InvitationSerializer(serializers.ModelSerializer):
+    """Serializer for inviting a person; the token is never returned."""
+
+    invited_by = InviterSerializer(read_only=True)
+
+    class Meta:
+        model = Invitation
+        fields = ["id", "email", "role", "invited_by", "expires_at"]
+        read_only_fields = ["id", "expires_at"]
+
+    def validate_email(self, value):
+        email = value.lower()
+        if Membership.objects.filter(
+            tenant=self.context["tenant"], user__email__iexact=email
+        ).exists():
+            raise serializers.ValidationError("This person is already a member of this business.")
+        if Invitation.pending().filter(tenant=self.context["tenant"], email__iexact=email).exists():
+            raise serializers.ValidationError(
+                "This email already has a pending invitation to this business."
+            )
+        return email
+
+
+class MemberSerializer(serializers.ModelSerializer):
+    """Serializer for a member of a business; only the role can be changed."""
+
+    first_name = serializers.CharField(source="user.first_name", read_only=True)
+    last_name = serializers.CharField(source="user.last_name", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+
+    class Meta:
+        model = Membership
+        fields = ["id", "first_name", "last_name", "email", "role"]
+        read_only_fields = ["id"]
+
+
+class InvitationLookupSerializer(serializers.Serializer):
+    """Serializer for reading an invitation from the token in its link."""
+
+    token = serializers.CharField()
+    lock_invitation = False
+
+    def validate(self, attrs):
+        invitations = Invitation.pending().filter(token=attrs["token"], tenant__is_deleted=False)
+        if self.lock_invitation:
+            invitations = invitations.select_for_update(of=("self",))
+        invitation = invitations.first()
+        if invitation is None:
+            # Past its date but not used or cancelled: tell it apart, so the person asks for a new one
+            expired = Invitation.objects.filter(
+                token=attrs["token"],
+                tenant__is_deleted=False,
+                expires_at__lte=timezone.now(),
+            ).exists()
+            if expired:
+                raise serializers.ValidationError(
+                    {"token": [ErrorDetail("The invitation has expired.", "invitation_expired")]}
+                )
+            raise serializers.ValidationError(
+                {"token": [ErrorDetail("The invitation is invalid.", "invitation_invalid")]}
+            )
+        user = User.objects.filter(email__iexact=invitation.email).first()
+        if user is not None and not user.is_active:
+            raise serializers.ValidationError(
+                {"token": [ErrorDetail("The invitation is invalid.", "invitation_invalid")]}
+            )
+        attrs["invitation"] = invitation
+        attrs["user"] = user
+        return attrs
+
+
+class InvitationAcceptSerializer(InvitationLookupSerializer):
+    """Serializer for accepting an invitation; validate it inside a transaction."""
+
+    lock_invitation = True
+
+    # Which of these are needed depends on the account, so validate() checks them
+    first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    new_password = serializers.CharField(
+        required=False, allow_blank=True, style={"input_type": "password"}
+    )
+    new_password_confirm = serializers.CharField(
+        required=False, allow_blank=True, style={"input_type": "password"}
+    )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        invitation = attrs["invitation"]
+        email = invitation.email
+        user = attrs["user"]
+        request_user = self.context["request"].user
+        if request_user.is_authenticated and request_user.email.lower() != email.lower():
+            raise PermissionDenied("This invitation was sent to another email.")
+        has_password = user is not None and user.has_usable_password()
+        if has_password and not request_user.is_authenticated:
+            raise NotAuthenticated
+        if (
+            user is not None
+            and Membership.objects.filter(tenant=invitation.tenant, user=user).exists()
+        ):
+            raise serializers.ValidationError(
+                {"token": ["You are already a member of this business."]}
+            )
+        if has_password:
+            return attrs
+        required = ("new_password",) if user else ("first_name", "last_name", "new_password")
+        missing = {field: ["This field is required."] for field in required if not attrs.get(field)}
+        if missing:
+            raise serializers.ValidationError(missing)
+        if attrs["new_password"] != attrs.get("new_password_confirm"):
+            raise serializers.ValidationError({"new_password_confirm": ["Passwords do not match."]})
+        candidate = user or User(
+            email=email, first_name=attrs["first_name"], last_name=attrs["last_name"]
+        )
+        try:
+            validate_password(attrs["new_password"], candidate)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(
+                {"new_password": password_error_details(error)}
+            ) from error
+        return attrs

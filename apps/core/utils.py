@@ -71,6 +71,20 @@ def generate_numeric_code(length=6):
     return "".join(random.choices(string.digits, k=length))
 
 
+def password_error_details(error):
+    """
+    The messages of a Django password ValidationError as DRF error details, each
+    keeping the code of its rule (for example `password_too_common`).
+    """
+    from rest_framework.exceptions import ErrorDetail
+
+    return [
+        ErrorDetail(message, code=item.code or "invalid")
+        for item in error.error_list
+        for message in item.messages
+    ]
+
+
 def _random_string(length=4):
     """Generate a short random lowercase string."""
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))

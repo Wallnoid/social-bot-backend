@@ -23,7 +23,7 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://postgres:postgres@localhost:5432/django_template",
+        default="postgres://postgres:postgres@localhost:5432/social_bot",
     ),
 }
 
@@ -35,6 +35,13 @@ DATABASES = {
 # INSTALLED_APPS += [
 #     "django_extensions",
 # ]
+
+# Seed commands and the fake Meta, for trying the frontend without real accounts. This app is
+# only listed here: production does not have it.
+INSTALLED_APPS += ["apps.devtools"]
+
+# Answer the messages sent to Meta without calling it (see apps/devtools/fake_meta.py)
+META_FAKE = env.bool("META_FAKE", default=False)
 
 # Add browsable API renderer in development
 REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (  # noqa: F405
@@ -49,20 +56,21 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (  # noqa: F405
 CORS_ALLOW_ALL_ORIGINS = True
 
 # =============================================================================
-# EMAIL (Console backend for development)
+# EMAIL (Console backend by default; set EMAIL_BACKEND in .env to send for real)
 # =============================================================================
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
 
 # =============================================================================
 # CACHING (Local Memory)
 # =============================================================================
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "unique-snowflake",
-    }
+CACHES["default"] = {
+    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    "LOCATION": "unique-snowflake",
 }
 
 # =============================================================================

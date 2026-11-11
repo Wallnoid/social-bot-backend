@@ -10,6 +10,8 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
+from django.core.exceptions import ImproperlyConfigured
 
 # =============================================================================
 # PATH CONFIGURATION
@@ -69,11 +71,19 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "health_check",
     "django_celery_beat",
+    "wanps.messaging",
+    "wanps.whatsapp",
+    "wanps.messenger",
+    "wanps.instagram",
+    "wanps.inbox",
 ]
 
 LOCAL_APPS = [
     "apps.core",
     "apps.accounts",
+    "apps.tenants",
+    "apps.channels",
+    "apps.conversations",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -121,7 +131,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://postgres:postgres@localhost:5432/django_template",
+        default="postgres://postgres:postgres@localhost:5432/social_bot",
     ),
 }
 
@@ -171,7 +181,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# Where the saved files go. Empty means `media/` in the project; set it to put them on another disk
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default="") or BASE_DIR / "media")
+
+# The files that clients send are saved the first time someone opens them (see apps/conversations/files.py)
+MESSAGE_FILE_MAX_BYTES = env.int("MESSAGE_FILE_MAX_BYTES", default=16 * 1024 * 1024)
+MESSAGE_FILE_RETENTION_DAYS = env.int("MESSAGE_FILE_RETENTION_DAYS", default=30)
 
 # =============================================================================
 # DJANGO REST FRAMEWORK
@@ -205,6 +220,11 @@ REST_FRAMEWORK = {
         "anon": "100/hour",
         "user": "1000/hour",
     },
+    # How many reverse proxies sit in front of the API. With 0 the limits identify a client by
+    # its socket address. Never leave it unset: DRF would then trust the whole X-Forwarded-For
+    # header, which the client controls, and could be dodged by changing it. Behind a proxy set
+    # it to their number, or every user shares the proxy's address and one limit.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
     # Schema
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Renderers
@@ -238,16 +258,27 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
     "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
+    # Tokens carry a claim derived from the password hash: changing the password cuts every
+    # session at once. Our refresh serializer checks the claim too (SimpleJWT only checks access).
+    "CHECK_REVOKE_TOKEN": True,
+    "TOKEN_REFRESH_SERIALIZER": "apps.accounts.serializers.TokenRefreshSerializer",
 }
+
+# The refresh token travels in an httpOnly cookie, never in a response body. The cookie only
+# goes to the authentication routes and to the API host (no Domain), so the frontend and the
+# API must share a base domain (app.example.com / api.example.com).
+AUTH_REFRESH_COOKIE_NAME = "refresh_token"
+AUTH_REFRESH_COOKIE_PATH = "/api/v1/accounts/"
+AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=False)
 
 # =============================================================================
 # DRF SPECTACULAR (API DOCUMENTATION)
 # =============================================================================
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Django Backend Template API",
-    "DESCRIPTION": "A production-ready Django REST API template with authentication, "
-    "CRUD operations, and best practices built-in.",
+    "TITLE": "Social Bot API",
+    "DESCRIPTION": "Backend API for the Social Bot suite: WhatsApp, Messenger and Instagram "
+    "conversations, calendar, CRM and notifications.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
@@ -265,6 +296,40 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
+# A browser on another origin may send, besides the usual ones, the header that names the
+# active business: without it the browser rejects every request of a business.
+CORS_ALLOW_HEADERS = (*default_headers, "x-tenant-id")
+
+# Base URL of the frontend, used in links sent by email
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
+
+# Seconds a password link (e.g. the one emailed to a new admin) stays valid
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24 * 7)
+
+# Channels (wanps-core): many accounts stored in the database, secrets encrypted with this key
+WANPS_MULTITENANT = True
+WANPS_ENCRYPTION_KEY = env("WANPS_ENCRYPTION_KEY", default="")
+if not WANPS_ENCRYPTION_KEY:
+    # Fail at startup, not on the first save of a token or Meta App secret
+    raise ImproperlyConfigured("Set WANPS_ENCRYPTION_KEY in .env (see .env.example).")
+
+# Seconds an invitation to join a business stays valid
+INVITATION_TIMEOUT = env.int("INVITATION_TIMEOUT", default=60 * 60 * 24 * 7)
+
+# =============================================================================
+# EMAIL (SMTP; the backend itself is chosen in local.py / production.py)
+# =============================================================================
+
+EMAIL_HOST = env("EMAIL_HOST", default="smtp.hostinger.com")
+EMAIL_PORT = env.int("EMAIL_PORT", default=465)
+# STARTTLS (usually port 587) and SSL (usually port 465) are mutually exclusive
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=True)
+# Seconds to wait for the mail server; without it a stalled server blocks the request
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Social Bot <contact@wanps.tech>")
 
 # =============================================================================
 # CELERY
@@ -279,6 +344,16 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_BEAT_SCHEDULE = {
+    "delete-expired-message-files": {
+        "task": "apps.conversations.tasks.delete_expired_message_files",
+        "schedule": 24 * 60 * 60,  # every day
+    },
+    "flush-expired-tokens": {
+        "task": "apps.accounts.tasks.flush_expired_tokens",
+        "schedule": 24 * 60 * 60,  # every day
+    },
+}
 
 # =============================================================================
 # CACHING
@@ -291,8 +366,26 @@ CACHES = {
         "OPTIONS": {
             "db": "1",
         },
-    }
+    },
+    # Connection permits of the inbox in real time. Always in Redis, because the permit is asked
+    # of one process and used on another, which a per-process cache cannot do
+    "ws_tickets": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_URL", default="redis://localhost:6379/1"),
+        "OPTIONS": {"db": "2"},
+    },
 }
+
+# Delivers the events of the inbox between processes (the webhook runs in web, the bot in the worker)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://localhost:6379/1")]},
+    },
+}
+
+# Seconds a connection permit can be used after it is asked for
+WS_TICKET_TIMEOUT = env.int("WS_TICKET_TIMEOUT", default=30)
 
 # =============================================================================
 # LOGGING

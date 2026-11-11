@@ -11,10 +11,12 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from drf_spectacular.views import (
     SpectacularAPIView,
+    SpectacularJSONAPIView,
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
 from health_check.views import HealthCheckView
+from wanps.messaging.meta import MetaWebhookView
 
 urlpatterns = [
     # Redirect root to documentation
@@ -24,9 +26,25 @@ urlpatterns = [
     # API v1
     path("api/v1/", include([
         path("accounts/", include("apps.accounts.urls")),
+        path("tenants/", include("apps.tenants.urls")),
+        path("channels/", include("apps.channels.urls")),
+        path("inbox/", include("apps.conversations.urls")),
     ])),
+    # Meta webhook (WhatsApp, Messenger, Instagram), served by wanps-core. Only the
+    # per-app route: the one without a key has no app secret to check signatures.
+    path(
+        "webhooks/meta/",
+        include(
+            (
+                [path("<str:webhook_key>/", MetaWebhookView.as_view(), name="meta-webhook")],
+                "messaging",
+            )
+        ),
+    ),
     # API Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    # The same schema as JSON: the frontend generates its types from this address
+    path("api/openapi.json", SpectacularJSONAPIView.as_view(), name="openapi-json"),
     path(
         "api/docs/",
         SpectacularSwaggerView.as_view(url_name="schema"),
@@ -57,6 +75,6 @@ if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # Customize admin site
-admin.site.site_header = "Django Backend Template"
-admin.site.site_title = "Admin Portal"
+admin.site.site_header = "Social Bot"
+admin.site.site_title = "Social Bot Admin"
 admin.site.index_title = "Administration"

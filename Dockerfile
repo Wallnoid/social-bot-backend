@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ==============================================================================
 # Stage 1: Base image with dependencies
 # ==============================================================================
@@ -15,13 +16,20 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
+        git \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
+# wanps-core lives in a private GitHub repo: the token arrives as a build secret,
+# is used only by this step and never ends up in an image layer
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+RUN --mount=type=secret,id=github_token,required=true \
+    token="$(cat /run/secrets/github_token)" \
+    && git config --global url."https://x-access-token:${token}@github.com/".insteadOf "https://github.com/" \
+    && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir . \
+    && rm -f /root/.gitconfig
 
 # ==============================================================================
 # Stage 2: Production image
@@ -68,11 +76,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/ || exit 1
 
-# Run with gunicorn
-CMD ["gunicorn", "config.wsgi:application", \
+# Run with gunicorn and uvicorn workers: HTTP and the WebSockets of the inbox on the same port
+CMD ["gunicorn", "config.asgi:application", \
+     "--worker-class", "uvicorn_worker.UvicornWorker", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "4", \
-     "--threads", "2", \
      "--timeout", "120", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]

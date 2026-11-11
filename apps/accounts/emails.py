@@ -1,0 +1,59 @@
+"""
+Emails sent to users by the accounts app.
+"""
+
+from django.conf import settings
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+
+
+def format_validity(seconds):
+    """Describe how long a link lasts, in days if whole, otherwise in hours."""
+    hours = -(-seconds // (60 * 60))
+    if hours % 24 == 0:
+        days = hours // 24
+        return f"{days} {'día' if days == 1 else 'días'}"
+    return f"{hours} {'hora' if hours == 1 else 'horas'}"
+
+
+def set_password_link(user):
+    """A one-time link to the frontend page that creates the user's password."""
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    return f"{settings.FRONTEND_URL}/set-password?uid={uid}&token={token}"
+
+
+def send_password_reset_email(user):
+    """Email the user a one-time link to reset a forgotten password."""
+    send_mail(
+        subject="Restablece tu contraseña de Social Bot",
+        message=(
+            f"Hola {user.first_name},\n\n"
+            "Recibimos una solicitud para restablecer tu contraseña de Social Bot. "
+            "Crea una nueva con este enlace "
+            f"(válido por {format_validity(settings.PASSWORD_RESET_TIMEOUT)}):\n\n"
+            f"{set_password_link(user)}\n\n"
+            "Si no lo pediste, ignora este correo: tu contraseña no cambia."
+        ),
+        from_email=None,
+        recipient_list=[user.email],
+    )
+
+
+def send_set_password_email(user):
+    """Email the user a one-time link to create their password."""
+    link = set_password_link(user)
+    send_mail(
+        subject="Crea tu contraseña de Social Bot",
+        message=(
+            f"Hola {user.first_name},\n\n"
+            "Ya tienes acceso a Social Bot. Crea tu contraseña con este enlace "
+            f"(válido por {format_validity(settings.PASSWORD_RESET_TIMEOUT)}):\n\n"
+            f"{link}\n\n"
+            "Si no esperabas este correo, puedes ignorarlo."
+        ),
+        from_email=None,
+        recipient_list=[user.email],
+    )
