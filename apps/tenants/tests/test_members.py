@@ -73,9 +73,8 @@ def test_list_leaves_out_other_businesses_and_removed_members(admin_client, tena
     assert response.data["data"] == []
 
 
-@pytest.mark.parametrize("role", [Membership.Role.AGENT, Membership.Role.SUPERVISOR])
-def test_agent_and_supervisor_cannot_see_the_members(tenant, role):
-    api = client_for(add_member(tenant, "member@acme.test", role))
+def test_an_agent_cannot_see_the_members(tenant):
+    api = client_for(add_member(tenant, "member@acme.test", Membership.Role.AGENT))
 
     response = api.get(MEMBERS_URL)
 

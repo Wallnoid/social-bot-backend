@@ -19,7 +19,7 @@ from apps.core.throttling import BurstAnonRateThrottle, BurstUserRateThrottle
 
 from .emails import send_invitation_email
 from .models import Invitation, Membership, Tenant
-from .permissions import HasActiveTenant, IsTenantAdmin
+from .permissions import HasActiveTenant, IsSupervisorOrAdmin, IsTenantAdmin
 from .serializers import (
     InvitationAcceptSerializer,
     InvitationLookupSerializer,
@@ -287,12 +287,12 @@ def cancel_invitations_sent_by(member):
 
 class MemberListView(generics.GenericAPIView):
     """
-    GET /api/v1/tenants/members/ → the members of the active business, without
-    the admin asking.
+    GET /api/v1/tenants/members/ → the members of the active business, for supervisors and
+    admins.
     """
 
     serializer_class = MemberSerializer
-    permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsSupervisorOrAdmin]
 
     @extend_schema(
         responses={

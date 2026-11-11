@@ -45,3 +45,10 @@ class IsTenantAdmin(BasePermission):
 
     def has_permission(self, request, view):
         return request.membership.role == Membership.Role.ADMIN
+
+
+class IsSupervisorOrAdmin(BasePermission):
+    """Allows supervisors and admins of the active business; use after HasActiveTenant."""
+
+    def has_permission(self, request, view):
+        return request.membership.role in (Membership.Role.SUPERVISOR, Membership.Role.ADMIN)
