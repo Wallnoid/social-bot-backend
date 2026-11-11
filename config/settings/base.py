@@ -366,8 +366,26 @@ CACHES = {
         "OPTIONS": {
             "db": "1",
         },
-    }
+    },
+    # Connection permits of the inbox in real time. Always in Redis, because the permit is asked
+    # of one process and used on another, which a per-process cache cannot do
+    "ws_tickets": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_URL", default="redis://localhost:6379/1"),
+        "OPTIONS": {"db": "2"},
+    },
 }
+
+# Delivers the events of the inbox between processes (the webhook runs in web, the bot in the worker)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://localhost:6379/1")]},
+    },
+}
+
+# Seconds a connection permit can be used after it is asked for
+WS_TICKET_TIMEOUT = env.int("WS_TICKET_TIMEOUT", default=30)
 
 # =============================================================================
 # LOGGING

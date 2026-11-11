@@ -6,6 +6,7 @@ which accounts it may look at: only the connected accounts of the active busines
 import logging
 
 import requests
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404, HttpResponse
 from django.utils.http import content_disposition_header
@@ -31,6 +32,7 @@ from apps.channels.models import ChannelAccount
 from apps.tenants.permissions import HasActiveTenant
 
 from .files import open_message_file
+from .realtime import issue_ticket
 from .serializers import (
     BotStateSerializer,
     ChatMessagesSerializer,
@@ -243,6 +245,37 @@ class MessageFileView(APIView):
                 True, attachment.filename or None
             )
         return response
+
+
+class ConnectionTicketView(APIView):
+    """POST /api/v1/inbox/ws-ticket/ → a permit to open the permanent connection of the inbox."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+
+    @extend_schema(
+        request=None,
+        responses={
+            201: inline_serializer(
+                "ConnectionTicketResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer(
+                        "ConnectionTicket",
+                        {
+                            "ticket": serializers.CharField(),
+                            "expires_in": serializers.IntegerField(
+                                help_text="Seconds the permit can be used."
+                            ),
+                        },
+                    ),
+                },
+            )
+        },
+    )
+    def post(self, request):
+        ticket = issue_ticket(request.user.pk, request.tenant.pk)
+        data = {"ticket": ticket, "expires_in": settings.WS_TICKET_TIMEOUT}
+        return Response({"success": True, "data": data}, status=status.HTTP_201_CREATED)
 
 
 class TemplatesUnavailable(APIException):

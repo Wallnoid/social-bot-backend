@@ -6,6 +6,7 @@ from django.urls import re_path
 
 from .views import (
     BotView,
+    ConnectionTicketView,
     ConversationListView,
     MessageFileView,
     MessageListView,
@@ -19,6 +20,8 @@ app_name = "conversations"
 CHANNEL = r"(?P<channel>whatsapp|messenger|instagram)"
 
 urlpatterns = [
+    # The permit to open the permanent connection belongs to the person, not to a channel
+    re_path(r"^ws-ticket/$", ConnectionTicketView.as_view(), name="connection-ticket"),
     # The templates belong to the WhatsApp account, not to a chat
     re_path(r"^whatsapp/templates/$", TemplateListView.as_view(), name="template-list"),
     re_path(

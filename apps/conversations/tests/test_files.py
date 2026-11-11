@@ -451,3 +451,12 @@ def test_the_folder_of_the_saved_files_comes_from_the_environment(tmp_path):
 
     assert media_root(MEDIA_ROOT=str(tmp_path / "files")) == tmp_path / "files"
     assert media_root(MEDIA_ROOT="") == Path(settings.BASE_DIR) / "media"
+
+
+def test_the_tests_never_reach_the_redis_of_a_developer():
+    # A message saved for a connected account announces itself and asks for permits through these
+    from channels.layers import get_channel_layer
+    from django.core.cache import caches
+
+    assert caches["ws_tickets"].__class__.__name__ == "LocMemCache"
+    assert get_channel_layer().__class__.__name__ == "InMemoryChannelLayer"

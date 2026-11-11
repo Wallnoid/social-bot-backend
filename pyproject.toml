@@ -36,8 +36,14 @@ dependencies = [
     # Image handling
     "Pillow>=10.0",
 
-    # Production server
+    # Production server: Gunicorn manages the processes and Uvicorn serves HTTP and WebSockets
     "gunicorn>=22.0",
+    "uvicorn[standard]>=0.30",
+    "uvicorn-worker>=0.2",
+
+    # The inbox in real time (WebSockets), delivered between processes through Redis
+    "channels>=4.2",
+    "channels-redis>=4.2",
 
     # Channels (WhatsApp, Messenger, Instagram); private repo, pinned to a release tag
     "wanps-core[multitenant] @ git+https://github.com/Wanp-s/wanps-core.git@v0.6.0",

@@ -2,10 +2,10 @@ services:
   web:
     build:
       target: base
-    # Instalamos debugpy al vuelo y levantamos el servidor de desarrollo en lugar de gunicorn
+    # Instalamos debugpy al vuelo y levantamos Uvicorn (HTTP y WebSockets de la bandeja) en lugar de gunicorn
     command: >
       sh -c "pip install debugpy && 
-             python -m debugpy --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000"
+             python -m debugpy --listen 0.0.0.0:5678 -m uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload"
     volumes:
       # Sync local code with the container in real time (hot reload)
       - .:/app

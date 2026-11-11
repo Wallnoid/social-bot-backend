@@ -34,6 +34,24 @@ def meta_is_not_faked_unless_a_test_asks():
 
 
 @pytest.fixture(autouse=True)
+def events_of_the_inbox_stay_in_memory(settings):
+    """
+    Deliver the events of the inbox in memory in every test.
+
+    A message saved for a connected account announces itself through the channel layer; the
+    tests must not reach the Redis of a developer who has it running.
+    """
+    settings.CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+    settings.CACHES = {
+        **settings.CACHES,
+        "ws_tickets": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "ws-tickets-of-the-tests",
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
 def throttle_counters_start_from_zero():
     """Rate limit counters live in the cache; every test starts with none."""
     from django.core.cache import cache

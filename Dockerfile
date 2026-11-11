@@ -76,11 +76,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/ || exit 1
 
-# Run with gunicorn
-CMD ["gunicorn", "config.wsgi:application", \
+# Run with gunicorn and uvicorn workers: HTTP and the WebSockets of the inbox on the same port
+CMD ["gunicorn", "config.asgi:application", \
+     "--worker-class", "uvicorn_worker.UvicornWorker", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "4", \
-     "--threads", "2", \
      "--timeout", "120", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]

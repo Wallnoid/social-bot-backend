@@ -74,11 +74,10 @@ EMAIL_BACKEND = env(
 # CACHING (Redis)
 # =============================================================================
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env("REDIS_URL"),
-    }
+# Only the default cache changes: base.py also defines `ws_tickets` (the permits of the inbox)
+CACHES["default"] = {
+    "BACKEND": "django.core.cache.backends.redis.RedisCache",
+    "LOCATION": env("REDIS_URL"),
 }
 
 # =============================================================================

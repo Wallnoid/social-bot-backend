@@ -24,8 +24,8 @@ help: ## Show this help message
 install: ## Install dependencies (pip install with dev extras)
 	pip install -e ".[dev]"
 
-run: ## Run the development server
-	python manage.py runserver 0.0.0.0:8000
+run: ## Run the development server (HTTP and WebSockets)
+	uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload --env-file .env
 
 migrate: ## Run database migrations
 	python manage.py migrate
