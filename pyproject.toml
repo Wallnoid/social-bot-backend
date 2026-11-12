@@ -47,7 +47,7 @@ dependencies = [
     "channels-redis>=4.2",
 
     # Channels (WhatsApp, Messenger, Instagram); private repo, pinned to a release tag
-    "wanps-core[multitenant] @ git+https://github.com/Wanp-s/wanps-core.git@v0.7.0",
+    "wanps-core[multitenant,gemini] @ git+https://github.com/Wanp-s/wanps-core.git@v0.7.0",
 ]
 
 [project.optional-dependencies]
