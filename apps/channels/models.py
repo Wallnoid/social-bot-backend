@@ -25,6 +25,38 @@ class ChannelAccount(BaseModel):
         return f"{self.account} ({self.tenant})"
 
 
+class ToolCall(models.Model):
+    """
+    One call the bot made to the endpoint of a tool. It keeps who and what was asked and how it
+    went, never the path, the query, the keys or the answer: those can hold secrets or personal data.
+    """
+
+    class Status(models.TextChoices):
+        OK = "ok"
+        BLOCKED = "blocked"
+        TIMEOUT = "timeout"
+        TOO_LARGE = "too_large"
+        HTTP_ERROR = "http_error"
+        UNREACHABLE = "unreachable"
+        REDIRECTS = "redirects"
+
+    account = models.ForeignKey(
+        "messaging.Account", on_delete=models.PROTECT, related_name="tool_calls"
+    )
+    tool = models.CharField(max_length=100)
+    host = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=Status.choices)
+    http_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    duration_ms = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.tool} → {self.host}: {self.status}"
+
+
 class SharedMetaApp(BaseModel):
     """Marks the Meta App that businesses without their own app connect to."""
 

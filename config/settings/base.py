@@ -333,6 +333,12 @@ WANPS_AI = {
 # The bot of every account. Fixed here, not read from `.env`: it is code of this project.
 WANPS_HANDLER = "apps.channels.handler.ChannelAIHandler"
 
+# The calls the bot makes to the endpoints of its tools: seconds in total for each one, bytes of
+# answer it reads at most (the answer travels to the AI), and days its record is kept.
+TOOL_CALL_TIMEOUT = env.float("TOOL_CALL_TIMEOUT", default=5)
+TOOL_CALL_MAX_BYTES = env.int("TOOL_CALL_MAX_BYTES", default=64 * 1024)
+TOOL_CALL_RETENTION_DAYS = env.int("TOOL_CALL_RETENTION_DAYS", default=30)
+
 # Process the messages of the clients (bot replies included) in a Celery worker instead of inside the
 # webhook request, so Meta gets its answer at once. An account can override it in the admin.
 WANPS_ASYNC = env.bool("WANPS_ASYNC", default=False)
@@ -375,6 +381,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "flush-expired-tokens": {
         "task": "apps.accounts.tasks.flush_expired_tokens",
+        "schedule": 24 * 60 * 60,  # every day
+    },
+    "delete-old-tool-calls": {
+        "task": "apps.channels.tasks.delete_old_tool_calls",
         "schedule": 24 * 60 * 60,  # every day
     },
 }
