@@ -315,6 +315,10 @@ if not WANPS_ENCRYPTION_KEY:
     # Fail at startup, not on the first save of a token or Meta App secret
     raise ImproperlyConfigured("Set WANPS_ENCRYPTION_KEY in .env (see .env.example).")
 
+# Process the messages of the clients (bot replies included) in a Celery worker instead of inside the
+# webhook request, so Meta gets its answer at once. An account can override it in the admin.
+WANPS_ASYNC = env.bool("WANPS_ASYNC", default=False)
+
 # Seconds an invitation to join a business stays valid
 INVITATION_TIMEOUT = env.int("INVITATION_TIMEOUT", default=60 * 60 * 24 * 7)
 
