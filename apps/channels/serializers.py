@@ -2,6 +2,8 @@
 Serializers for the channels app.
 """
 
+import importlib.util
+
 from django.conf import settings
 from django.urls import reverse
 from rest_framework import serializers
@@ -47,6 +49,19 @@ class ConnectAccountSerializer(serializers.ModelSerializer):
         return attrs
 
 
+# The module of the SDK of each AI provider. They are optional extras of wanps-core, so a provider
+# only works if its extra is installed in the image.
+PROVIDER_SDKS = {"gemini": "google.genai", "openai": "openai", "anthropic": "anthropic"}
+
+
+def provider_is_installed(provider):
+    module = PROVIDER_SDKS.get(str(provider).lower())
+    try:
+        return bool(module and importlib.util.find_spec(module))
+    except (ImportError, ValueError):
+        return False
+
+
 def ai_is_available(account):
     """
     Whether the bot of this account would have an AI to answer with: its own, or the one of the
@@ -55,7 +70,7 @@ def ai_is_available(account):
     """
     platform = dict(getattr(settings, "WANPS_AI", None) or {})
     provider = account.ai_provider or platform.get("PROVIDER")
-    if not provider:
+    if not provider or not provider_is_installed(provider):
         return False
     same_as_platform = str(provider).lower() == str(platform.get("PROVIDER") or "").lower()
     return bool(account.ai_api_key or (platform.get("API_KEY") if same_as_platform else None))
@@ -68,6 +83,8 @@ class UpdateAccountSerializer(serializers.ModelSerializer):
         source="system_prompt",
         required=False,
         allow_blank=True,
+        # It travels to the AI with every message, so its size is the cost of every answer
+        max_length=10000,
         help_text="How the bot must behave and what it must know about the business.",
     )
 

@@ -42,7 +42,7 @@ App names are provisional; decide them when each one is built.
 ## External integrations
 - `wanps-core` (sibling repo `../wanps-core`): channels, messaging tables, AI handlers. Installed from its private GitHub repo, pinned to a release tag (Docker builds get the token as a build secret). Settings: `WANPS_MULTITENANT` and `WANPS_ENCRYPTION_KEY`; the Meta Apps are stored in the database.
 - Meta: WhatsApp Business API (Cloud), Messenger, Instagram DMs, through `wanps-core`.
-- LLM providers (OpenAI, Anthropic, Gemini) through `wanps.ai`, configured per account.
+- LLM providers through `wanps.ai`. The AI of the platform is set in `.env` (`WANPS_AI_*`); an account can have its own. Only the Gemini SDK is installed (the `gemini` extra of `wanps-core`): for OpenAI or Anthropic, add their extra in `pyproject.toml`.
 
 ## Technical decisions
 - **Multi-tenant via `wanps-core`'s multi-tenant mode:** many channel accounts in one deployment, each with its own credentials and bot.

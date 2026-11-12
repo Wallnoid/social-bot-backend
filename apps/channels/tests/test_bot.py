@@ -36,9 +36,15 @@ def meta_app(db):
 
 
 @pytest.fixture(autouse=True)
-def platform_ai(settings):
+def platform_ai(settings, monkeypatch):
     """The AI of the platform, so no test depends on what the `.env` of the machine says."""
     settings.WANPS_AI = {"PROVIDER": "gemini", "API_KEY": "platform-key"}
+    # Only the Gemini SDK is installed in the image, whatever the machine running the tests has
+    monkeypatch.setattr(
+        "apps.channels.serializers.provider_is_installed",
+        lambda provider: provider == "gemini",
+        raising=False,
+    )
 
 
 def turn_on(api, link, **extra):
@@ -191,3 +197,45 @@ def test_the_api_docs_describe_the_bot_fields_without_any_ai_key():
     assert shown["instructions"]["type"] == "string"
     for name in ("ChannelAccount", "PatchedUpdateAccountRequest"):
         assert "ai_api_key" not in json.dumps(components[name])
+
+
+def test_a_provider_whose_sdk_is_not_installed_cannot_be_turned_on(
+    admin_client, tenant, meta_app, settings
+):
+    settings.WANPS_AI = {}
+    link = add_account(tenant, meta_app, "111")
+    account = stored(link)
+    account.ai_provider, account.ai_api_key = "openai", "own-key"
+    account.save()
+
+    response = turn_on(admin_client, link)
+
+    assert response.status_code == 400
+    assert "is_active" in response.data["errors"]
+    assert stored(link).is_active is False
+
+
+def test_the_instructions_have_a_maximum_length(admin_client, tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+
+    too_long = turn_on(admin_client, link, instructions="x" * 10001)
+    just_enough = turn_on(admin_client, link, instructions="x" * 10000)
+
+    assert too_long.status_code == 400
+    assert "instructions" in too_long.data["errors"]
+    assert just_enough.status_code == 200
+
+
+def test_the_ai_of_an_account_cannot_be_changed_through_the_api(admin_client, tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+
+    response = admin_client.patch(
+        detail_url(link),
+        {"ai_provider": "openai", "ai_model": "m", "ai_api_key": "k", "ai_level": 3},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    account = stored(link)
+    assert (account.ai_provider, account.ai_model, account.ai_api_key) == ("", "", "")
+    assert account.ai_level == 1

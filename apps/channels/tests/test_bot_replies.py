@@ -10,7 +10,7 @@ from unittest import mock
 
 import pytest
 import requests
-from wanps.messaging.models import App, Message
+from wanps.messaging.models import Account, App, Message
 
 from apps.channels.tests.test_bot import INSTRUCTIONS, turn_on
 from apps.channels.tests.test_manage_accounts import add_account
@@ -38,8 +38,13 @@ def meta_app(db):
 
 
 @pytest.fixture(autouse=True)
-def inline_processing_and_platform_ai(settings):
+def inline_processing_and_platform_ai(settings, monkeypatch):
     settings.WANPS_ASYNC = False  # the bot answers inside the request, so the test can see it
+    monkeypatch.setattr(
+        "apps.channels.serializers.provider_is_installed",
+        lambda provider: provider == "gemini",
+        raising=False,
+    )
     settings.WANPS_AI = {"PROVIDER": "gemini", "API_KEY": "platform-key"}
 
 
@@ -155,6 +160,20 @@ def test_the_prompt_asks_for_the_format_that_the_channel_shows(
 
 def test_a_bot_that_is_off_stores_the_message_and_does_not_answer(client, tenant, meta_app, ai):
     add_account(tenant, meta_app, "111")  # connected accounts start with the bot off
+
+    with meta_replies("whatsapp") as post:
+        response = client_writes(client, meta_app, "whatsapp", "111")
+
+    assert response.status_code == 200
+    assert Message.objects.filter(direction="in", contact_id=CLIENT).count() == 1
+    post.assert_not_called()
+    assert ai.prompts == []
+
+
+def test_a_bot_that_is_on_without_instructions_stays_silent(client, tenant, meta_app, ai):
+    # Turned on from the Django admin or the database, which the API rules do not cover
+    link = add_account(tenant, meta_app, "111")
+    Account.objects.filter(pk=link.account_id).update(is_active=True, system_prompt="")
 
     with meta_replies("whatsapp") as post:
         response = client_writes(client, meta_app, "whatsapp", "111")
