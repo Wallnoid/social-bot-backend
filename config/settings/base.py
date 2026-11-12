@@ -315,6 +315,24 @@ if not WANPS_ENCRYPTION_KEY:
     # Fail at startup, not on the first save of a token or Meta App secret
     raise ImproperlyConfigured("Set WANPS_ENCRYPTION_KEY in .env (see .env.example).")
 
+# The AI that answers for every account that has none of its own (Social Bot pays for it). Empty
+# values are left out, so a missing provider or key fails with a clear error when the bot is used.
+WANPS_AI = {
+    key: value
+    for key, value in {
+        "PROVIDER": env("WANPS_AI_PROVIDER", default=""),
+        "API_KEY": env("WANPS_AI_API_KEY", default=""),
+        "MODEL": env("WANPS_AI_MODEL", default=""),
+        "EFFORT": env("WANPS_AI_EFFORT", default="low"),
+        # Seconds to wait for the AI: a slow provider must not hold the worker for long
+        "TIMEOUT": env.float("WANPS_AI_TIMEOUT", default=30),
+    }.items()
+    if value
+}
+
+# The bot of every account. Fixed here, not read from `.env`: it is code of this project.
+WANPS_HANDLER = "apps.channels.handler.ChannelAIHandler"
+
 # Process the messages of the clients (bot replies included) in a Celery worker instead of inside the
 # webhook request, so Meta gets its answer at once. An account can override it in the admin.
 WANPS_ASYNC = env.bool("WANPS_ASYNC", default=False)

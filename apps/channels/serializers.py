@@ -2,6 +2,7 @@
 Serializers for the channels app.
 """
 
+from django.conf import settings
 from django.urls import reverse
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -46,14 +47,59 @@ class ConnectAccountSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def ai_is_available(account):
+    """
+    Whether the bot of this account would have an AI to answer with: its own, or the one of the
+    platform. It mirrors how wanps-core chooses: another provider than the platform's never
+    borrows the platform's key.
+    """
+    platform = dict(getattr(settings, "WANPS_AI", None) or {})
+    provider = account.ai_provider or platform.get("PROVIDER")
+    if not provider:
+        return False
+    same_as_platform = str(provider).lower() == str(platform.get("PROVIDER") or "").lower()
+    return bool(account.ai_api_key or (platform.get("API_KEY") if same_as_platform else None))
+
+
 class UpdateAccountSerializer(serializers.ModelSerializer):
     """What a business admin can change on a connected account."""
 
+    instructions = serializers.CharField(
+        source="system_prompt",
+        required=False,
+        allow_blank=True,
+        help_text="How the bot must behave and what it must know about the business.",
+    )
+
     class Meta:
         model = Account
-        fields = ["name", "access_token"]
+        fields = ["name", "access_token", "is_active", "instructions"]
         # Like when connecting: the token goes in encrypted and never comes back out
-        extra_kwargs = {"access_token": {"write_only": True, "allow_blank": False}}
+        extra_kwargs = {
+            "access_token": {"write_only": True, "allow_blank": False},
+            "is_active": {"help_text": "Whether the bot answers the clients of this account."},
+        }
+
+    def validate(self, attrs):
+        if "is_active" not in attrs and "system_prompt" not in attrs:
+            return attrs  # a rename or a new token never depends on the bot
+        is_on = attrs.get("is_active", self.instance.is_active)
+        instructions = attrs.get("system_prompt", self.instance.system_prompt)
+        if is_on and not instructions.strip():
+            raise serializers.ValidationError(
+                {
+                    "instructions": "Write the instructions of the bot first: "
+                    "without them it would answer your clients with no guidance."
+                }
+            )
+        if attrs.get("is_active") and not ai_is_available(self.instance):
+            raise serializers.ValidationError(
+                {
+                    "is_active": "The bot cannot be turned on right now because no AI is set up. "
+                    "Ask the Social Bot team."
+                }
+            )
+        return attrs
 
     def update(self, instance, validated_data):
         for field, value in validated_data.items():
@@ -72,11 +118,26 @@ class ChannelAccountSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="account.name", read_only=True)
     external_id = serializers.CharField(source="account.external_id", read_only=True)
     business_id = serializers.CharField(source="account.business_id", read_only=True)
-    is_active = serializers.BooleanField(source="account.is_active", read_only=True)
+    is_active = serializers.BooleanField(
+        source="account.is_active", read_only=True, help_text="Whether the bot answers the clients."
+    )
+    instructions = serializers.CharField(
+        source="account.system_prompt",
+        read_only=True,
+        help_text="How the bot must behave and what it must know about the business.",
+    )
 
     class Meta:
         model = ChannelAccount
-        fields = ["id", "channel", "name", "external_id", "business_id", "is_active"]
+        fields = [
+            "id",
+            "channel",
+            "name",
+            "external_id",
+            "business_id",
+            "is_active",
+            "instructions",
+        ]
 
 
 class MetaAppSerializer(serializers.ModelSerializer):

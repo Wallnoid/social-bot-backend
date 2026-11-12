@@ -65,6 +65,7 @@ def test_any_member_lists_only_their_business_accounts(tenant, meta_app, role):
             "external_id": "111",
             "business_id": "998877",
             "is_active": False,
+            "instructions": "",
         }
     ]
     assert TOKEN not in str(response.data)
@@ -87,6 +88,7 @@ def test_admin_renames_an_account(admin_client, tenant, meta_app):
         "external_id": "111",
         "business_id": "998877",
         "is_active": False,
+        "instructions": "",
     }
     assert Account.objects.get(external_id="111").name == "Night shift"
 
@@ -148,7 +150,6 @@ def test_channel_external_id_and_business_id_cannot_be_changed(admin_client, ten
             "external_id": "999",
             "business_id": "000",
             "app": other_app.pk,
-            "is_active": True,
         },
         format="json",
     )
@@ -161,7 +162,6 @@ def test_channel_external_id_and_business_id_cannot_be_changed(admin_client, ten
         "998877",
     )
     assert account.app == meta_app
-    assert not account.is_active
 
 
 def test_api_docs_describe_listing_and_editing_accounts_without_the_token():
@@ -179,7 +179,12 @@ def test_api_docs_describe_listing_and_editing_accounts_without_the_token():
 
     operation = schema["paths"][f"{ACCOUNTS_URL}{{account_id}}/"]["patch"]
     request_body = resolved(operation["requestBody"])
-    assert set(request_body["properties"]) == {"name", "access_token"}
+    assert set(request_body["properties"]) == {
+        "name",
+        "access_token",
+        "is_active",
+        "instructions",
+    }
     assert "access_token" not in data_of(resolved(operation["responses"]["200"]))["properties"]
 
 

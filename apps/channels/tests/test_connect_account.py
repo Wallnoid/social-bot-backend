@@ -68,6 +68,7 @@ def test_admin_connects_an_account_on_the_business_meta_app(admin_client, tenant
         "external_id": "1234567890",
         "business_id": "998877",
         "is_active": False,
+        "instructions": "",
     }
 
 
