@@ -22,6 +22,7 @@ from wanps.messaging.models import Conversation, Message
 from wanps.messaging.signals import message_status_updated
 
 from apps.channels.models import ChannelAccount
+from apps.channels.signals import client_block_changed
 
 from .realtime import group_of
 from .serializers import ChatMessageSerializer
@@ -137,5 +138,25 @@ def bot_changed(sender, instance, created, **kwargs):
             "bot_paused": instance.bot_paused,
             "bot_paused_until": instance.bot_paused_until,
             "paused_by": instance.paused_by,
+        },
+    )
+
+
+@receiver(client_block_changed)
+@never_raise
+def block_changed(sender, account, contact_id, blocked_until, **kwargs):
+    """The bot started or stopped answering a client because of their faults. A block that ends by
+    itself, when its time passes, sends nothing: `bot_blocked_until` tells when."""
+    link = link_of(account.pk)
+    if link is None:
+        return
+    publish(
+        link,
+        {
+            "type": "block.changed",
+            "account": account_of(link),
+            "channel": account.channel,
+            "contact_id": contact_id,
+            "bot_blocked_until": blocked_until,
         },
     )

@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from unittest import mock
 from urllib.parse import urlsplit
 
@@ -24,6 +25,8 @@ from rest_framework.test import APIClient
 from wanps.messaging.models import App, Conversation, Message
 from wanps.messaging.signals import message_status_updated
 
+from apps.channels.abuse import register_strike
+from apps.channels.models import ClientStrikes
 from apps.channels.tests.test_manage_accounts import add_account
 from apps.conversations.realtime import redeem_ticket
 from apps.conversations.tests.test_inbox import add_message, inbox_url
@@ -440,3 +443,127 @@ def test_the_channel_layer_does_not_cut_its_own_wait_for_messages():
 
     assert isinstance(host, dict)
     assert host["socket_timeout"] > RedisChannelLayer.brpop_timeout
+
+
+def add_supervisor(tenant, email="supervisor@acme.test"):
+    return client_for(add_member(tenant, email, Membership.Role.SUPERVISOR))
+
+
+def test_blocking_a_client_is_sent_to_the_members_with_until_when(tenant, meta_app, settings):
+    settings.BOT_MAX_STRIKES = 1  # the first fault is the last one
+    link = add_account(tenant, meta_app, "111")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        await sync_to_async(register_strike)(link.account, "ana")
+        event = await connection.receive()
+        await connection.close()
+        return event
+
+    event = async_to_sync(scenario)()
+    assert event["type"] == "block.changed"
+    assert (event["channel"], event["contact_id"]) == ("whatsapp", "ana")
+    assert event["account"]["id"] == str(link.id)
+    sent = datetime.fromisoformat(event["bot_blocked_until"].replace("Z", "+00:00"))
+    stored = ClientStrikes.objects.get().blocked_until
+    assert abs(sent - stored) < timedelta(milliseconds=1)
+
+
+def test_a_fault_that_does_not_block_sends_no_event(tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        await sync_to_async(register_strike)(link.account, "ana")
+        saw_nothing = await connection.receives_nothing()
+        await connection.close()
+        return saw_nothing
+
+    assert async_to_sync(scenario)() is True
+
+
+def test_lifting_the_block_is_sent_with_no_date(tenant, meta_app, settings):
+    settings.BOT_MAX_STRIKES = 1
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "ana", "Hola")
+    register_strike(link.account, "ana")
+    supervisor = add_supervisor(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(supervisor)
+        await sync_to_async(supervisor.post)(
+            inbox_url("whatsapp", "ana", "unblock"), {"account": str(link.id)}, format="json"
+        )
+        event = await connection.receive()
+        extra = await connection.receives_nothing()
+        await connection.close()
+        return event, extra
+
+    event, extra = async_to_sync(scenario)()
+    assert event["type"] == "block.changed"
+    assert (event["contact_id"], event["bot_blocked_until"]) == ("ana", None)
+    assert extra is True
+
+
+def test_lifting_a_block_that_was_not_on_sends_no_event(tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "ana", "Hola")
+    supervisor = add_supervisor(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(supervisor)
+        await sync_to_async(supervisor.post)(
+            inbox_url("whatsapp", "ana", "unblock"), {"account": str(link.id)}, format="json"
+        )
+        saw_nothing = await connection.receives_nothing()
+        await connection.close()
+        return saw_nothing
+
+    assert async_to_sync(scenario)() is True
+
+
+def test_the_block_of_a_client_never_reaches_another_business(tenant, meta_app, settings):
+    settings.BOT_MAX_STRIKES = 1
+    mine = add_account(tenant, meta_app, "111")
+    rival_tenant = Tenant.objects.create(name="Rival Clinic")
+    add_account(rival_tenant, meta_app, "333")
+    me, them = add_agent(tenant, "me@acme.test"), add_agent(rival_tenant, "them@rival.test")
+
+    async def scenario():
+        mine_connection, _ = await connect_as(me)
+        rival_connection, _ = await connect_as(them)
+        await sync_to_async(register_strike)(mine.account, "ana")
+        ours = await mine_connection.receive()
+        rival_saw_nothing = await rival_connection.receives_nothing()
+        await mine_connection.close()
+        await rival_connection.close()
+        return ours, rival_saw_nothing
+
+    ours, rival_saw_nothing = async_to_sync(scenario)()
+    assert ours["type"] == "block.changed"
+    assert rival_saw_nothing is True
+
+
+def test_replying_as_a_person_sends_the_hour_in_which_the_bot_comes_back(tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "593990000001", "Hello?")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        with meta_replies("whatsapp"):
+            await sync_to_async(member.post)(
+                send_url("whatsapp", "593990000001"),
+                {"account": str(link.id), "text": "I am here"},
+                format="json",
+            )
+        events = [await connection.receive(), await connection.receive()]
+        await connection.close()
+        return events
+
+    events = async_to_sync(scenario)()
+    bot = next(event for event in events if event["type"] == "bot.changed")
+    assert bot["bot_paused"] is True
+    assert bot["bot_paused_until"] is not None

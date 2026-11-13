@@ -65,6 +65,7 @@ def test_any_member_lists_the_chats_of_a_channel_of_their_business(tenant, meta_
         "bot_paused",
         "bot_paused_until",
         "paused_by",
+        "bot_blocked_until",
     }
     assert ana["account"] == {"id": str(link.id), "name": "Front desk", "channel": "whatsapp"}
     assert (ana["channel"], ana["contact_name"], ana["window_open"]) == ("whatsapp", "Ana", True)

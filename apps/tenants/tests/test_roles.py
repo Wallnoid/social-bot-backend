@@ -19,6 +19,7 @@ AGENT, SUPERVISOR, ADMIN = Membership.Role.AGENT, Membership.Role.SUPERVISOR, Me
 TABLE = [
     ("get", "/api/v1/inbox/whatsapp/", [AGENT, SUPERVISOR, ADMIN]),
     ("post", "/api/v1/inbox/ws-ticket/", [AGENT, SUPERVISOR, ADMIN]),
+    ("post", f"/api/v1/inbox/whatsapp/conversations/{SOME_ID}/unblock/", [SUPERVISOR, ADMIN]),
     ("get", "/api/v1/channels/accounts/", [AGENT, SUPERVISOR, ADMIN]),
     ("post", "/api/v1/channels/accounts/", [ADMIN]),
     ("patch", f"/api/v1/channels/accounts/{SOME_ID}/", [ADMIN]),

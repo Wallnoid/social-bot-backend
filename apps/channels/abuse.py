@@ -16,6 +16,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import ClientStrikes
+from .signals import client_block_changed
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,12 @@ def register_strike(account, contact_id) -> dict:
     row.last_block_at = now
     row.strikes = 0
     row.save()
+    client_block_changed.send(
+        sender=ClientStrikes,
+        account=account,
+        contact_id=contact_id,
+        blocked_until=row.blocked_until,
+    )
     return {
         "blocked": True,
         "strikes": maximum,

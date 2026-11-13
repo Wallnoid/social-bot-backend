@@ -98,6 +98,11 @@ class ConversationSerializer(serializers.Serializer):
     bot_paused = serializers.BooleanField()
     bot_paused_until = serializers.DateTimeField(allow_null=True)
     paused_by = serializers.CharField()
+    bot_blocked_until = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Until when the bot does not answer this client because they insisted on messages "
+        "unrelated to the business. Empty when they are not blocked.",
+    )
 
 
 class ChatMessagesSerializer(serializers.Serializer):
@@ -108,6 +113,11 @@ class ChatMessagesSerializer(serializers.Serializer):
     bot_paused = serializers.BooleanField()
     bot_paused_until = serializers.DateTimeField(allow_null=True)
     paused_by = serializers.CharField()
+    bot_blocked_until = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Until when the bot does not answer this client because they insisted on messages "
+        "unrelated to the business. Empty when they are not blocked.",
+    )
     messages = ChatMessageSerializer(many=True)
     has_more = serializers.BooleanField()
 
@@ -150,6 +160,12 @@ class PauseBotSerializer(serializers.Serializer):
     account = serializers.UUIDField()
     paused = serializers.BooleanField()
     minutes = serializers.IntegerField(min_value=1, max_value=10080, required=False)
+
+
+class UnblockSerializer(serializers.Serializer):
+    """The account of the chat whose client is blocked (the one the messages need too)."""
+
+    account = serializers.UUIDField()
 
 
 class BotStateSerializer(serializers.Serializer):

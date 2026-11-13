@@ -12,6 +12,7 @@ from .views import (
     MessageListView,
     SendMessageView,
     TemplateListView,
+    UnblockView,
 )
 
 app_name = "conversations"
@@ -46,5 +47,10 @@ urlpatterns = [
         rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/bot/$",
         BotView.as_view(),
         name="bot",
+    ),
+    re_path(
+        rf"^{CHANNEL}/conversations/(?P<contact_id>[^/]+)/unblock/$",
+        UnblockView.as_view(),
+        name="unblock",
     ),
 ]

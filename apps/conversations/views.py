@@ -9,6 +9,7 @@ import requests
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404, HttpResponse
+from django.utils import timezone
 from django.utils.http import content_disposition_header
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
@@ -29,8 +30,9 @@ from wanps.messaging.meta_messaging import MetaAPIError
 from wanps.messaging.models import Message
 from wanps.whatsapp.client import WhatsAppError, list_templates
 
-from apps.channels.models import ChannelAccount
-from apps.tenants.permissions import HasActiveTenant
+from apps.channels.models import ChannelAccount, ClientStrikes
+from apps.channels.signals import client_block_changed
+from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
 
 from .files import open_message_file
 from .realtime import issue_ticket
@@ -46,6 +48,7 @@ from .serializers import (
     SendMessageSerializer,
     TemplateSerializer,
     TemplatesQuerySerializer,
+    UnblockSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,6 +124,16 @@ def mark_files(messages, readable):
         )
 
 
+def blocked_untils(chats):
+    """Until when the bot does not answer each client of the chats (only the blocks still on)."""
+    rows = ClientStrikes.objects.filter(
+        account_id__in={chat["account"]["id"] for chat in chats},
+        contact_id__in={chat["contact_id"] for chat in chats},
+        blocked_until__gt=timezone.now(),
+    )
+    return {(row.account_id, row.contact_id): row.blocked_until for row in rows}
+
+
 class ConversationListView(APIView):
     """GET /api/v1/inbox/<channel>/conversations/ → the chats of the business on a channel."""
 
@@ -157,9 +170,11 @@ class ConversationListView(APIView):
             limit=query.validated_data["limit"],
             offset=query.validated_data["offset"],
         )
+        blocked = blocked_untils(found["conversations"])
         conversations = [
             {
                 **chat,
+                "bot_blocked_until": blocked.get((chat["account"]["id"], chat["contact_id"])),
                 "contact_name": chat["contact_name"] or GENERIC_NAMES.get(channel, ""),
                 "account": account_of(by_account[chat["account"]["id"]]),
             }
@@ -199,7 +214,16 @@ class MessageListView(APIView):
             before=query.validated_data.get("before"),
         )
         mark_files(found["messages"], inbox.messages(link.account))
-        data = ChatMessagesSerializer({**found, "account": account_of(link)}).data
+        blocked_until = (
+            ClientStrikes.objects.filter(
+                account=link.account, contact_id=contact_id, blocked_until__gt=timezone.now()
+            )
+            .values_list("blocked_until", flat=True)
+            .first()
+        )
+        data = ChatMessagesSerializer(
+            {**found, "account": account_of(link), "bot_blocked_until": blocked_until}
+        ).data
         return Response({"success": True, "data": data})
 
 
@@ -557,3 +581,44 @@ class TemplateListView(APIView):
         link = pick_link(business_links(request, "whatsapp"), query.validated_data["account"])
         templates = templates_of(link)
         return Response({"success": True, "data": TemplateSerializer(templates, many=True).data})
+
+
+class UnblockView(APIView):
+    """POST /api/v1/inbox/<channel>/conversations/<contact>/unblock/ → lift the block of a client."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant, IsSupervisorOrAdmin]
+
+    @extend_schema(
+        description=(
+            "Lifts the block that the bot put on a client who insisted on messages unrelated to the "
+            "business, and clears their faults, for supervisors and admins. It is fine if the "
+            "client was not blocked."
+        ),
+        request=UnblockSerializer,
+        responses={
+            200: inline_serializer(
+                "UnblockResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            ),
+            404: OpenApiResponse(
+                description="The account is not one of the business's on this channel, or the chat does not exist."
+            ),
+        },
+    )
+    def post(self, request, channel, contact_id):
+        body = UnblockSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        link, inbox = chat_scope(request, channel, body.validated_data["account"])
+        if not inbox.messages(link.account).filter(contact_id=contact_id, channel=channel).exists():
+            raise Http404
+        rows = ClientStrikes.objects.filter(account=link.account, contact_id=contact_id)
+        was_blocked = rows.filter(blocked_until__gt=timezone.now()).exists()
+        rows.update(strikes=0, blocked_until=None)
+        if was_blocked:
+            client_block_changed.send(
+                sender=ClientStrikes,
+                account=link.account,
+                contact_id=contact_id,
+                blocked_until=None,
+            )
+        return Response({"success": True, "message": "The block was lifted."})
