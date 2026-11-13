@@ -98,7 +98,7 @@ def test_cannot_invite_a_current_member(admin_client, tenant, mailoutbox):
     response = invite(admin_client, email="AGENT@acme.test")
 
     assert response.status_code == 400
-    assert "already a member" in str(response.data)
+    assert response.data["error_codes"]["email"] == ["already_member"]
     assert not Invitation.objects.exists()
     assert mailoutbox == []
 
@@ -110,7 +110,7 @@ def test_cannot_invite_an_email_with_a_pending_invitation(admin_client, mailoutb
     response = invite(admin_client, email="NEW@acme.test")
 
     assert response.status_code == 400
-    assert "pending invitation" in str(response.data)
+    assert response.data["error_codes"]["email"] == ["already_invited"]
     assert Invitation.objects.count() == 1
     assert mailoutbox == []
 

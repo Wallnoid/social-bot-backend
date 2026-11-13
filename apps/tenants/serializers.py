@@ -40,10 +40,13 @@ class InvitationSerializer(serializers.ModelSerializer):
         if Membership.objects.filter(
             tenant=self.context["tenant"], user__email__iexact=email
         ).exists():
-            raise serializers.ValidationError("This person is already a member of this business.")
+            raise serializers.ValidationError(
+                "This person is already a member of this business.", code="already_member"
+            )
         if Invitation.pending().filter(tenant=self.context["tenant"], email__iexact=email).exists():
             raise serializers.ValidationError(
-                "This email already has a pending invitation to this business."
+                "This email already has a pending invitation to this business.",
+                code="already_invited",
             )
         return email
 
