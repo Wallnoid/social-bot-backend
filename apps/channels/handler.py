@@ -1,10 +1,16 @@
 """
-The bot of every account: the instructions its business wrote, plus how its channel shows text.
+The bot of every account: the instructions its business wrote, how its channel shows text, and the
+tools the business gave it.
 """
 
 import logging
 
 from wanps.ai import BaseAIHandler
+from wanps.ai.handlers import AI_LEVEL_TOOLS
+from wanps.ai.tools import Tool
+
+from .models import ChannelTool
+from .safe_http import safe_get
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +28,76 @@ PLAIN_TEXT_RULE = (
 )
 
 
+# What the AI may give for each declared type (a list or a dict is never a value of a query)
+TYPE_CHECKS = {
+    "string": lambda value: isinstance(value, (str, int, float)) and not isinstance(value, bool),
+    "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+    "boolean": lambda value: isinstance(value, bool),
+}
+
+
+def query_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def build_tool(tool):
+    """
+    The AI-facing tool of a ChannelTool: a GET to its address with the values the AI gives in the
+    query and the key of the tool. Only the values the tool declares are sent.
+    """
+    declared = {parameter["name"]: parameter["type"] for parameter in tool.parameters}
+    required = [parameter["name"] for parameter in tool.parameters if parameter["required"]]
+    schema = {
+        "type": "object",
+        "properties": {
+            parameter["name"]: {"type": parameter["type"], "description": parameter["description"]}
+            for parameter in tool.parameters
+        },
+    }
+    if required:
+        schema["required"] = required
+    headers = {}
+    if tool.auth_type == ChannelTool.AuthType.BEARER:
+        headers["Authorization"] = f"Bearer {tool.auth_secret}"
+    elif tool.auth_type == ChannelTool.AuthType.HEADER:
+        headers[tool.auth_header] = tool.auth_secret
+
+    # `account` is filled in by wanps-core with the account of the message, never by the AI
+    def call(*, account, **arguments):
+        missing = [name for name in required if arguments.get(name) in (None, "")]
+        if missing:
+            raise ValueError("Missing required value: " + ", ".join(missing))
+        values = {
+            name: value
+            for name, value in arguments.items()
+            if name in declared and value is not None
+        }
+        wrong = [name for name, value in values.items() if not TYPE_CHECKS[declared[name]](value)]
+        if wrong:
+            raise ValueError("Wrong type of value: " + ", ".join(wrong))
+        params = {name: query_value(value) for name, value in values.items()}
+        return safe_get(tool.url, account=account, tool=tool.name, headers=headers, params=params)
+
+    return Tool(call, name=tool.name, description=tool.description, parameters_schema=schema)
+
+
 class ChannelAIHandler(BaseAIHandler):
     """Answers with the instructions of the account, written for the channel of the client."""
+
+    def active_tools(self, msg):
+        """
+        The tools of the account of the message, and of no other account. Looked up once: wanps-core
+        asks for the level and for the tools in the same turn.
+        """
+        account = self.get_account(msg)
+        if account is None:
+            return []
+        cache = self.__dict__.setdefault("_active_tools", {})
+        if account.pk not in cache:
+            cache[account.pk] = list(ChannelTool.objects.filter(account=account, is_active=True))
+        return cache[account.pk]
 
     def handle(self, msg) -> None:
         account = self.get_account(msg)
@@ -41,3 +115,13 @@ class ChannelAIHandler(BaseAIHandler):
         instructions = super().get_base_system_prompt(msg).rstrip()
         rule = FORMAT_RULES.get(msg.channel, PLAIN_TEXT_RULE)
         return "\n".join([instructions, "", "Format of the answers:", rule, ""])
+
+    def get_ai_level(self, msg) -> int:
+        # The level follows the tools: an account that has one can use them
+        level = super().get_ai_level(msg)
+        if level < AI_LEVEL_TOOLS and self.active_tools(msg):
+            return AI_LEVEL_TOOLS
+        return level
+
+    def get_tools(self, context, msg):
+        return [build_tool(tool) for tool in self.active_tools(msg)]

@@ -7,6 +7,7 @@ businesses; these models record which business owns each account.
 
 from django.db import models
 from django.db.models import Q, Value
+from wanps.messaging.fields import EncryptedTextField
 
 from apps.core.models import BaseModel
 
@@ -23,6 +24,44 @@ class ChannelAccount(BaseModel):
 
     def __str__(self):
         return f"{self.account} ({self.tenant})"
+
+
+class ChannelTool(BaseModel):
+    """
+    A tool of the bot of an account: a GET to an address of the business or of a third party,
+    which the AI may ask for while it answers a client. The key of the endpoint is stored
+    encrypted and never returned by the API.
+    """
+
+    class AuthType(models.TextChoices):
+        NONE = "none"
+        BEARER = "bearer"
+        HEADER = "header"
+
+    account = models.ForeignKey(
+        "messaging.Account", on_delete=models.PROTECT, related_name="tools"
+    )
+    name = models.CharField(max_length=64)
+    description = models.TextField(help_text="What the tool is for, written for the AI.")
+    url = models.CharField(max_length=500)
+    parameters = models.JSONField(default=list, blank=True)
+    auth_type = models.CharField(max_length=10, choices=AuthType.choices, default=AuthType.NONE)
+    auth_header = models.CharField(max_length=64, blank=True, default="")
+    auth_secret = EncryptedTextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
+
+    class Meta(BaseModel.Meta):
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "name"],
+                condition=Q(is_deleted=False),
+                name="channels_tool_name_unique_per_account",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.account})"
 
 
 class ToolCall(models.Model):

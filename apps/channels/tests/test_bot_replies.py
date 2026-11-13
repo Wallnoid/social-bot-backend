@@ -9,50 +9,16 @@ import json
 from unittest import mock
 
 import pytest
-import requests
-from wanps.messaging.models import Account, App, Message
+from wanps.messaging.models import Account, Message
 
 from apps.channels.tests.test_bot import INSTRUCTIONS, turn_on
 from apps.channels.tests.test_manage_accounts import add_account
 from apps.conversations.tests.test_send import meta_replies, recipient_and_text
-from apps.tenants.models import Membership, Tenant
-from apps.tenants.tests.helpers import add_member, client_for
 
 CLIENT = "593990000001"
 REPLY = "Hello, I am the bot of Acme Dental."
 
-
-@pytest.fixture
-def tenant(db):
-    return Tenant.objects.create(name="Acme Dental")
-
-
-@pytest.fixture
-def admin_client(tenant):
-    return client_for(add_member(tenant, "admin@acme.test", Membership.Role.ADMIN))
-
-
-@pytest.fixture
-def meta_app(db):
-    return App.objects.create(name="Social Bot", app_secret="app-secret", verify_token="verify")
-
-
-@pytest.fixture(autouse=True)
-def inline_processing_and_platform_ai(settings, monkeypatch):
-    settings.WANPS_ASYNC = False  # the bot answers inside the request, so the test can see it
-    monkeypatch.setattr(
-        "apps.channels.serializers.provider_is_installed",
-        lambda provider: provider == "gemini",
-        raising=False,
-    )
-    settings.WANPS_AI = {"PROVIDER": "gemini", "API_KEY": "platform-key"}
-
-
-@pytest.fixture(autouse=True)
-def no_real_meta_profiles():
-    """Messenger and Instagram ask Meta for the name of the client: never for real in a test."""
-    with mock.patch("requests.get", side_effect=requests.ConnectionError("no network in tests")):
-        yield
+pytestmark = pytest.mark.usefixtures("inline_processing_and_platform_ai", "no_real_meta_profiles")
 
 
 class FakeAI:

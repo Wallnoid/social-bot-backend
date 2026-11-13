@@ -355,3 +355,10 @@ def test_the_daily_job_deletes_the_records_older_than_the_retention_time(account
 
     assert deleted == 1
     assert list(ToolCall.objects.all()) == [recent]
+
+
+def test_a_header_value_the_http_library_cannot_encode_is_a_safe_error_not_a_crash(account):
+    bad_header = UnicodeEncodeError("latin-1", chr(8217), 0, 1, "ordinal not in range")
+
+    with network(bad_header):
+        fails_with(account, "unreachable", headers={"Authorization": "Bearer key"})

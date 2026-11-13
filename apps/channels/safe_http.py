@@ -127,7 +127,8 @@ def fetch(url, headers, params):
             )
         except requests.Timeout:
             raise ToolCallError("timeout") from None
-        except requests.RequestException:
+        except (requests.RequestException, UnicodeError):
+            # UnicodeError: a header value that cannot be encoded never leaves the process
             raise ToolCallError("unreachable") from None
         with response:
             status = response.status_code
