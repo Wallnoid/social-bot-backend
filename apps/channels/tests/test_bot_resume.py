@@ -125,3 +125,22 @@ def test_after_the_hour_the_bot_answers_again(admin_client, client, meta_app, li
     assert response.status_code == 200
     ai.generate.assert_called_once()
     assert post.call_args.kwargs["json"]["text"]["body"] == "Hello, I am the bot."
+
+
+def test_a_pause_set_by_hand_survives_the_reply_of_a_person(admin_client, link):
+    Conversation.set_bot_paused(link.account, CLIENT, True, paused_by="Ana", channel="whatsapp")
+
+    reply(admin_client, link)
+
+    paused = conversation(link)
+    assert (paused.bot_paused, paused.bot_paused_until, paused.paused_by) == (True, None, "Ana")
+
+
+def test_a_pause_with_an_end_is_renewed_by_the_reply_even_if_someone_set_it(admin_client, link):
+    soon = timezone.now() + timedelta(minutes=5)
+    Conversation.set_bot_paused(link.account, CLIENT, True, until=soon, paused_by="Ana")
+    before = timezone.now()
+
+    reply(admin_client, link)
+
+    assert_ends_in(conversation(link).bot_paused_until, 60, before, timezone.now())

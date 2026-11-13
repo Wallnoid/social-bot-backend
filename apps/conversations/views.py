@@ -27,7 +27,7 @@ from wanps.inbox.services import (
 )
 from wanps.messaging.attachments import get_attachment
 from wanps.messaging.meta_messaging import MetaAPIError
-from wanps.messaging.models import Message
+from wanps.messaging.models import Conversation, Message
 from wanps.whatsapp.client import WhatsAppError, list_templates
 
 from apps.channels.abuse import limited_until, limited_untils
@@ -514,16 +514,25 @@ class SendMessageView(APIView):
                 getattr(exc, "status_code", None),
             )
             raise MessageNotDelivered from None
-        # A person is talking: the bot waits, and takes the chat back after an hour without them
-        set_bot_paused(
-            inbox,
-            contact_id,
-            link.account,
-            paused=True,
-            minutes=settings.BOT_RESUME_AFTER_MINUTES,
-            paused_by=request.user.full_name,
+        # A person is talking: the bot waits, and takes the chat back after an hour without them.
+        # A pause that someone set by hand, with no end, stays until someone resumes the bot
+        by_hand = Conversation.objects.filter(
+            account=link.account,
+            contact_id=contact_id,
             channel=channel,
-        )
+            bot_paused=True,
+            bot_paused_until__isnull=True,
+        ).exists()
+        if not by_hand:
+            set_bot_paused(
+                inbox,
+                contact_id,
+                link.account,
+                paused=True,
+                minutes=settings.BOT_RESUME_AFTER_MINUTES,
+                paused_by=request.user.full_name,
+                channel=channel,
+            )
         return Response(
             {"success": True, "data": InboxMessageSerializer(sent).data},
             status=status.HTTP_201_CREATED,
