@@ -19,6 +19,8 @@ from apps.channels.tests.test_tool_calls import ScriptedAI, asks_for
 from apps.conversations.tests.test_send import CLIENT, meta_replies, send_url
 from apps.tenants.models import Tenant
 
+OTHER = "593990000002"
+
 pytestmark = pytest.mark.usefixtures("inline_processing_and_platform_ai", "no_real_meta_profiles")
 
 
@@ -190,3 +192,96 @@ def test_an_error_while_counting_never_stops_the_bot_from_answering(client, meta
 
     assert len(ai.prompts) == 2
     post.assert_called()
+
+
+def flood(link, count, ago=timedelta(minutes=10), contact=CLIENT):
+    for number in range(count):
+        earlier(link, f"hi {number}", ago, contact=contact)
+
+
+def test_a_client_who_writes_too_much_in_an_hour_gets_no_answer_and_no_ai(
+    client, meta_app, link, settings
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link, 5)  # with the new one, six in the hour
+    ai = ScriptedAI()
+
+    post = writes(client, meta_app, ai)
+
+    assert ai.prompts == []
+    post.assert_not_called()
+    assert Message.objects.filter(contact_id=CLIENT, direction=Message.DIRECTION_IN).count() == 6
+
+
+def test_the_limit_itself_is_still_answered(client, meta_app, link, settings):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link, 4)  # with the new one, exactly five
+    ai = ScriptedAI()
+
+    writes(client, meta_app, ai)
+
+    assert len(ai.prompts) == 1
+
+
+def test_messages_older_than_an_hour_do_not_count(client, meta_app, link, settings):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link, 30, ago=timedelta(minutes=61))
+    ai = ScriptedAI()
+
+    writes(client, meta_app, ai)
+
+    assert len(ai.prompts) == 1
+
+
+def test_only_the_messages_of_this_client_in_this_account_count(
+    client, meta_app, link, settings, tenant
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    rival = add_account(Tenant.objects.create(name="Rival Clinic"), meta_app, "222")
+    flood(link, 30, contact=OTHER)
+    flood(rival, 30)
+    ai = ScriptedAI()
+
+    writes(client, meta_app, ai)
+
+    assert len(ai.prompts) == 1
+
+
+def test_the_answers_of_the_bot_and_the_team_do_not_count(client, meta_app, link, settings):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    for number in range(30):
+        earlier(link, f"out {number}", timedelta(minutes=5), direction=Message.DIRECTION_OUT)
+    ai = ScriptedAI()
+
+    writes(client, meta_app, ai)
+
+    assert len(ai.prompts) == 1
+
+
+def test_a_person_can_still_answer_a_client_who_writes_too_much(
+    admin_client, meta_app, link, settings
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link, 10)
+
+    with meta_replies("whatsapp"):
+        reply = admin_client.post(
+            send_url("whatsapp"), {"account": str(link.id), "text": "I am here"}, format="json"
+        )
+
+    assert reply.status_code == 201
+
+
+def test_after_the_limit_is_lifted_the_bot_answers_and_counts_from_zero(
+    client, meta_app, link, settings
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link, 10)
+    ClientStrikes.objects.create(
+        account=link.account, contact_id=CLIENT, messages_counted_from=timezone.now()
+    )
+    ai = ScriptedAI()
+
+    writes(client, meta_app, ai)
+
+    assert len(ai.prompts) == 1

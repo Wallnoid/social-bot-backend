@@ -9,14 +9,14 @@ person can always answer.
 """
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from .models import ClientStrikes
-from .signals import client_block_changed
+from .signals import client_block_changed, client_limit_changed
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,94 @@ def is_blocked(account, contact_id) -> bool:
     return ClientStrikes.objects.filter(
         account=account, contact_id=contact_id, blocked_until__gt=timezone.now()
     ).exists()
+
+
+def hour_of_messages(account_id, contact_id):
+    """The messages a client wrote to an account in the last hour, the oldest first."""
+    from wanps.messaging.models import Message
+
+    since = timezone.now() - timedelta(hours=1)
+    lifted = (
+        ClientStrikes.objects.filter(account_id=account_id, contact_id=contact_id)
+        .values_list("messages_counted_from", flat=True)
+        .first()
+    )
+    if lifted is not None:
+        since = max(since, lifted)
+    return Message.objects.filter(
+        account_id=account_id,
+        contact_id=contact_id,
+        direction=Message.DIRECTION_IN,
+        created_at__gte=since,
+    ).order_by("created_at")
+
+
+def limit_ends(account_id, contact_id, written) -> datetime | None:
+    """
+    When the client is under the limit again: when the oldest messages that put them over it leave
+    the hour. None if they are not over it.
+    """
+    surplus = written - settings.BOT_MAX_MESSAGES_PER_HOUR
+    if surplus < 1:
+        return None
+    oldest = list(
+        hour_of_messages(account_id, contact_id).values_list("created_at", flat=True)[
+            surplus - 1 : surplus
+        ]
+    )
+    return oldest[0] + timedelta(hours=1) if oldest else None
+
+
+def limited_untils(account_ids, contact_ids) -> dict:
+    """
+    For the chats of a page: until when the bot is silent with each client that wrote more messages
+    in the last hour than it answers, as {(account, client): date}. The bot is silent with them
+    without calling the AI; a person can always answer.
+    """
+    from django.db.models import Count
+    from wanps.messaging.models import Message
+
+    rows = (
+        Message.objects.filter(
+            account_id__in=account_ids,
+            contact_id__in=contact_ids,
+            direction=Message.DIRECTION_IN,
+            created_at__gte=timezone.now() - timedelta(hours=1),
+        )
+        .values("account_id", "contact_id")
+        .annotate(written=Count("id"))
+        .filter(written__gt=settings.BOT_MAX_MESSAGES_PER_HOUR)
+    )
+    # The page asks for the few that look over the limit; a lifted limit makes the count smaller
+    ends = {}
+    for row in rows:
+        key = (row["account_id"], row["contact_id"])
+        ends[key] = limit_ends(*key, hour_of_messages(*key).count())
+    return {key: value for key, value in ends.items() if value is not None}
+
+
+def limited_until(account, contact_id):
+    return limited_untils([account.pk], [contact_id]).get((account.pk, contact_id))
+
+
+def check_flooding(account, contact_id) -> bool:
+    """
+    True when the client wrote more messages in the last hour than the bot answers, so the bot
+    stays silent. It uses the saved messages: no table and no AI. It covers what the faults by topic
+    do not: a hundred greetings are about the business, but they are still an abuse. The message
+    that crosses the limit tells the team, once.
+    """
+    written = hour_of_messages(account.pk, contact_id).count()
+    if written <= settings.BOT_MAX_MESSAGES_PER_HOUR:
+        return False
+    if written == settings.BOT_MAX_MESSAGES_PER_HOUR + 1:
+        client_limit_changed.send(
+            sender=check_flooding,
+            account=account,
+            contact_id=contact_id,
+            limited_until=limit_ends(account.pk, contact_id, written),
+        )
+    return True
 
 
 def duration(minutes: int) -> str:

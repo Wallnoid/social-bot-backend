@@ -103,6 +103,11 @@ class ConversationSerializer(serializers.Serializer):
         help_text="Until when the bot does not answer this client because they insisted on messages "
         "unrelated to the business. Empty when they are not blocked.",
     )
+    bot_limited_until = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Until when the bot is silent with this client because they wrote too many "
+        "messages in the last hour. Empty when they are not over the limit.",
+    )
 
 
 class ChatMessagesSerializer(serializers.Serializer):
@@ -117,6 +122,11 @@ class ChatMessagesSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Until when the bot does not answer this client because they insisted on messages "
         "unrelated to the business. Empty when they are not blocked.",
+    )
+    bot_limited_until = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Until when the bot is silent with this client because they wrote too many "
+        "messages in the last hour. Empty when they are not over the limit.",
     )
     messages = ChatMessageSerializer(many=True)
     has_more = serializers.BooleanField()

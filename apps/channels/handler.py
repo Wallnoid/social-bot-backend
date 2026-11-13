@@ -9,7 +9,7 @@ from wanps.ai import BaseAIHandler
 from wanps.ai.handlers import AI_LEVEL_TOOLS
 from wanps.ai.tools import Tool
 
-from .abuse import is_blocked
+from .abuse import check_flooding, is_blocked
 from .bot_context import context_block, internal_tools
 from .models import ChannelTool
 from .platform_rules import rules_block
@@ -114,6 +114,10 @@ class ChannelAIHandler(BaseAIHandler):
         # A blocked client costs no AI at all: nothing is built and nothing is sent
         if account is not None and is_blocked(account, msg.contact_id):
             logger.info("The client of message %s is blocked: not answering.", msg.external_id)
+            return
+        # Too many messages in an hour: the bot stays silent and the AI is not called. A person can answer
+        if account is not None and check_flooding(account, msg.contact_id):
+            logger.info("The client of message %s writes too much: not answering.", msg.external_id)
             return
         super().handle(msg)
 

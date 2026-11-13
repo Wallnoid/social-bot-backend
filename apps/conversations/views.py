@@ -30,8 +30,9 @@ from wanps.messaging.meta_messaging import MetaAPIError
 from wanps.messaging.models import Message
 from wanps.whatsapp.client import WhatsAppError, list_templates
 
+from apps.channels.abuse import limited_until, limited_untils
 from apps.channels.models import ChannelAccount, ClientStrikes
-from apps.channels.signals import client_block_changed
+from apps.channels.signals import client_block_changed, client_limit_changed
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
 
 from .files import open_message_file
@@ -171,10 +172,15 @@ class ConversationListView(APIView):
             offset=query.validated_data["offset"],
         )
         blocked = blocked_untils(found["conversations"])
+        limited = limited_untils(
+            {chat["account"]["id"] for chat in found["conversations"]},
+            {chat["contact_id"] for chat in found["conversations"]},
+        )
         conversations = [
             {
                 **chat,
                 "bot_blocked_until": blocked.get((chat["account"]["id"], chat["contact_id"])),
+                "bot_limited_until": limited.get((chat["account"]["id"], chat["contact_id"])),
                 "contact_name": chat["contact_name"] or GENERIC_NAMES.get(channel, ""),
                 "account": account_of(by_account[chat["account"]["id"]]),
             }
@@ -222,7 +228,12 @@ class MessageListView(APIView):
             .first()
         )
         data = ChatMessagesSerializer(
-            {**found, "account": account_of(link), "bot_blocked_until": blocked_until}
+            {
+                **found,
+                "account": account_of(link),
+                "bot_blocked_until": blocked_until,
+                "bot_limited_until": limited_until(link.account, contact_id),
+            }
         ).data
         return Response({"success": True, "data": data})
 
@@ -590,9 +601,10 @@ class UnblockView(APIView):
 
     @extend_schema(
         description=(
-            "Lifts the block that the bot put on a client who insisted on messages unrelated to the "
-            "business, and clears their faults, for supervisors and admins. It is fine if the "
-            "client was not blocked."
+            "Lifts what keeps the bot silent with a client, for supervisors and admins: the block for "
+            "insisting on messages unrelated to the business (and their faults) and the limit of "
+            "messages per hour (the client starts counting from zero). It is fine if the client "
+            "had neither."
         ),
         request=UnblockSerializer,
         responses={
@@ -613,7 +625,21 @@ class UnblockView(APIView):
             raise Http404
         rows = ClientStrikes.objects.filter(account=link.account, contact_id=contact_id)
         was_blocked = rows.filter(blocked_until__gt=timezone.now()).exists()
+        was_limited = limited_until(link.account, contact_id) is not None
         rows.update(strikes=0, blocked_until=None)
+        if was_limited:
+            # The messages of the last hour stop counting: the client starts again from zero
+            ClientStrikes.objects.update_or_create(
+                account=link.account,
+                contact_id=contact_id,
+                defaults={"messages_counted_from": timezone.now()},
+            )
+            client_limit_changed.send(
+                sender=ClientStrikes,
+                account=link.account,
+                contact_id=contact_id,
+                limited_until=None,
+            )
         if was_blocked:
             client_block_changed.send(
                 sender=ClientStrikes,

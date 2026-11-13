@@ -108,6 +108,8 @@ class ClientStrikes(models.Model):
     last_strike_at = models.DateTimeField(null=True, blank=True)
     blocked_until = models.DateTimeField(null=True, blank=True)
     last_block_at = models.DateTimeField(null=True, blank=True)
+    # A supervisor lifted the limit of messages per hour: the earlier messages stop counting
+    messages_counted_from = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

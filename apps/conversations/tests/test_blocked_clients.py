@@ -165,3 +165,94 @@ def test_the_api_docs_describe_the_block_field_and_the_endpoint():
         assert field.get("nullable") is True or "null" in json.dumps(field)
     path = schema["paths"]["/api/v1/inbox/{channel}/conversations/{contact_id}/unblock/"]
     assert "post" in path
+
+
+def flood(link, contact=CLIENT, count=6):
+    for number in range(count):
+        add_message(link, contact, f"hi {number}")
+
+
+def test_the_team_sees_that_the_bot_is_silent_because_a_client_writes_too_much(
+    tenant, link, settings
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link)  # six messages of CLIENT plus the one of the fixture
+    api = member_with(tenant, Membership.Role.AGENT)
+
+    chats = listed(api)
+    chat = api.get(messages_url("whatsapp", CLIENT), {"account": str(link.id)})
+    other = api.get(messages_url("whatsapp", OTHER), {"account": str(link.id)})
+
+    assert chats[CLIENT]["bot_limited_until"] is not None
+    assert chats[OTHER]["bot_limited_until"] is None
+    assert chat.data["data"]["bot_limited_until"] is not None
+    assert other.data["data"]["bot_limited_until"] is None
+
+
+def test_a_client_inside_the_limit_or_in_another_account_is_not_limited(
+    tenant, meta_app, link, settings
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    rival = add_account(Tenant.objects.create(name="Rival Clinic"), meta_app, "222")
+    flood(rival, count=30)
+    api = member_with(tenant, Membership.Role.AGENT)
+
+    assert listed(api)[CLIENT]["bot_limited_until"] is None
+
+
+def test_the_api_docs_describe_bot_limited_until():
+    schema = SchemaGenerator().get_schema(request=None, public=True)
+    components = schema["components"]["schemas"]
+
+    for name in ("Conversation", "ChatMessages"):
+        assert "bot_limited_until" in components[name]["properties"]
+
+
+def test_the_date_is_when_the_oldest_surplus_messages_leave_the_hour(tenant, link, settings):
+    from wanps.messaging.models import Message
+
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 2
+    now = timezone.now()
+    for minutes in (50, 40, 30, 20):  # four messages plus the one of the fixture: 5, limit 2
+        message = add_message(link, CLIENT, f"hi {minutes}")
+        Message.objects.filter(pk=message.pk).update(created_at=now - timedelta(minutes=minutes))
+    api = member_with(tenant, Membership.Role.AGENT)
+
+    shown = listed(api)[CLIENT]["bot_limited_until"]
+
+    # five in the hour (the fixture one is the newest): three must leave, the third oldest is 30 min
+    assert abs(
+        timezone.datetime.fromisoformat(shown) - (now - timedelta(minutes=30) + timedelta(hours=1))
+    ) < timedelta(seconds=1)
+
+
+def test_a_supervisor_lifts_the_limit_of_messages_and_the_client_starts_from_zero(
+    tenant, link, settings
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link)
+    api = member_with(tenant, Membership.Role.SUPERVISOR)
+    assert listed(api)[CLIENT]["bot_limited_until"] is not None
+
+    response = lift(api, link)
+
+    assert response.status_code == 200
+    assert listed(api)[CLIENT]["bot_limited_until"] is None
+    chat = api.get(messages_url("whatsapp", CLIENT), {"account": str(link.id)})
+    assert chat.data["data"]["bot_limited_until"] is None
+    # new messages count again, from zero
+    for number in range(4):
+        add_message(link, CLIENT, f"after {number}")
+    assert listed(api)[CLIENT]["bot_limited_until"] is None
+    add_message(link, CLIENT, "after 4")
+    add_message(link, CLIENT, "after 5")
+    assert listed(api)[CLIENT]["bot_limited_until"] is not None
+
+
+def test_an_agent_cannot_lift_the_limit(tenant, link, settings):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 5
+    flood(link)
+    api = member_with(tenant, Membership.Role.AGENT)
+
+    assert lift(api, link).status_code == 403
+    assert listed(api)[CLIENT]["bot_limited_until"] is not None

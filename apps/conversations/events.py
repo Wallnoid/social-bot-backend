@@ -22,7 +22,7 @@ from wanps.messaging.models import Conversation, Message
 from wanps.messaging.signals import message_status_updated
 
 from apps.channels.models import ChannelAccount
-from apps.channels.signals import client_block_changed
+from apps.channels.signals import client_block_changed, client_limit_changed
 
 from .realtime import group_of
 from .serializers import ChatMessageSerializer
@@ -158,5 +158,25 @@ def block_changed(sender, account, contact_id, blocked_until, **kwargs):
             "channel": account.channel,
             "contact_id": contact_id,
             "bot_blocked_until": blocked_until,
+        },
+    )
+
+
+@receiver(client_limit_changed)
+@never_raise
+def limit_changed(sender, account, contact_id, limited_until, **kwargs):
+    """The bot went silent with a client who wrote too many messages in an hour. It ends by itself,
+    when the date passes, and sends nothing: `bot_limited_until` tells when."""
+    link = link_of(account.pk)
+    if link is None:
+        return
+    publish(
+        link,
+        {
+            "type": "limit.changed",
+            "account": account_of(link),
+            "channel": account.channel,
+            "contact_id": contact_id,
+            "bot_limited_until": limited_until,
         },
     )

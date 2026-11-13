@@ -349,6 +349,8 @@ BUSINESS_TIME_ZONE = env("BUSINESS_TIME_ZONE", default="America/Guayaquil")
 # A client who insists on messages unrelated to the business: faults before the block, the fault
 # from which the bot warns, hours without a new fault after which they expire, and the minutes of
 # the block (longer when the same client is blocked again within those hours)
+# Messages a client may send in an hour before the bot stops answering them (no AI is called)
+BOT_MAX_MESSAGES_PER_HOUR = env.int("BOT_MAX_MESSAGES_PER_HOUR", default=20)
 BOT_MAX_STRIKES = env.int("BOT_MAX_STRIKES", default=5)
 BOT_WARN_FROM_STRIKE = env.int("BOT_WARN_FROM_STRIKE", default=2)
 BOT_STRIKES_EXPIRE_HOURS = env.int("BOT_STRIKES_EXPIRE_HOURS", default=24)

@@ -567,3 +567,98 @@ def test_replying_as_a_person_sends_the_hour_in_which_the_bot_comes_back(tenant,
     bot = next(event for event in events if event["type"] == "bot.changed")
     assert bot["bot_paused"] is True
     assert bot["bot_paused_until"] is not None
+
+
+def limited_scenario(tenant, meta_app, messages):
+    """The client has written `messages` (limit 2); a member listens while the bot checks the last."""
+    from apps.channels.abuse import check_flooding
+
+    link = add_account(tenant, meta_app, "111")
+    member = add_agent(tenant)
+    for number in range(messages):
+        add_message(link, "ana", f"Hola {number}")
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        flooding = await sync_to_async(check_flooding)(link.account, "ana")
+        events = []
+        while not await connection.receives_nothing():
+            events.append(await connection.receive())
+        await connection.close()
+        return flooding, events
+
+    return link, async_to_sync(scenario)()
+
+
+def test_crossing_the_message_limit_is_sent_with_until_when(tenant, meta_app, settings):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 2
+
+    link, (flooding, events) = limited_scenario(tenant, meta_app, 3)
+
+    assert flooding is True
+    event = events[-1]
+    assert event["type"] == "limit.changed"
+    assert (event["channel"], event["contact_id"]) == ("whatsapp", "ana")
+    assert event["account"]["id"] == str(link.id)
+    assert event["bot_limited_until"] is not None
+
+
+@pytest.mark.parametrize("messages, flooding", [(2, False), (5, True)])
+def test_the_limit_is_told_only_by_the_message_that_crosses_it(
+    tenant, meta_app, settings, messages, flooding
+):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 2
+
+    _, (answer, events) = limited_scenario(tenant, meta_app, messages)
+
+    assert answer is flooding
+    assert "limit.changed" not in [event["type"] for event in events]
+
+
+def test_the_limit_of_a_client_never_reaches_another_business(tenant, meta_app, settings):
+    from apps.channels.abuse import check_flooding
+
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 1
+    mine = add_account(tenant, meta_app, "111")
+    rival_tenant = Tenant.objects.create(name="Rival Clinic")
+    add_account(rival_tenant, meta_app, "333")
+    for number in range(2):
+        add_message(mine, "ana", f"Hola {number}")
+    me, them = add_agent(tenant, "me@acme.test"), add_agent(rival_tenant, "them@rival.test")
+
+    async def scenario():
+        mine_connection, _ = await connect_as(me)
+        rival_connection, _ = await connect_as(them)
+        await sync_to_async(check_flooding)(mine.account, "ana")
+        ours = await mine_connection.receive()
+        rival_saw_nothing = await rival_connection.receives_nothing()
+        await mine_connection.close()
+        await rival_connection.close()
+        return ours, rival_saw_nothing
+
+    ours, rival_saw_nothing = async_to_sync(scenario)()
+    assert ours["type"] == "limit.changed"
+    assert rival_saw_nothing is True
+
+
+def test_lifting_the_limit_is_sent_with_no_date(tenant, meta_app, settings):
+    settings.BOT_MAX_MESSAGES_PER_HOUR = 2
+    link = add_account(tenant, meta_app, "111")
+    for number in range(4):
+        add_message(link, "ana", f"Hola {number}")
+    supervisor = add_supervisor(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(supervisor)
+        await sync_to_async(supervisor.post)(
+            inbox_url("whatsapp", "ana", "unblock"), {"account": str(link.id)}, format="json"
+        )
+        event = await connection.receive()
+        extra = await connection.receives_nothing()
+        await connection.close()
+        return event, extra
+
+    event, extra = async_to_sync(scenario)()
+    assert event["type"] == "limit.changed"
+    assert (event["contact_id"], event["bot_limited_until"]) == ("ana", None)
+    assert extra is True
