@@ -457,6 +457,8 @@ class SendMessageView(APIView):
                 template=dict(template) if template else None,
                 human_agent=human_agent,
                 sent_by=request.user.full_name,
+                # The pause below ends by itself, instead of the one that lasts until resumed
+                pause_bot=False,
                 channel=channel,
             )
         except WindowClosed:
@@ -477,6 +479,16 @@ class SendMessageView(APIView):
                 getattr(exc, "status_code", None),
             )
             raise MessageNotDelivered from None
+        # A person is talking: the bot waits, and takes the chat back after an hour without them
+        set_bot_paused(
+            inbox,
+            contact_id,
+            link.account,
+            paused=True,
+            minutes=settings.BOT_RESUME_AFTER_MINUTES,
+            paused_by=request.user.full_name,
+            channel=channel,
+        )
         return Response(
             {"success": True, "data": InboxMessageSerializer(sent).data},
             status=status.HTTP_201_CREATED,

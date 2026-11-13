@@ -339,6 +339,10 @@ TOOL_CALL_TIMEOUT = env.float("TOOL_CALL_TIMEOUT", default=5)
 TOOL_CALL_MAX_BYTES = env.int("TOOL_CALL_MAX_BYTES", default=64 * 1024)
 TOOL_CALL_RETENTION_DAYS = env.int("TOOL_CALL_RETENTION_DAYS", default=30)
 
+# Minutes the bot stays silent in a chat after a person replies from the inbox; once they pass
+# without another reply of a person, the bot answers the client again
+BOT_RESUME_AFTER_MINUTES = env.int("BOT_RESUME_AFTER_MINUTES", default=60)
+
 # Process the messages of the clients (bot replies included) in a Celery worker instead of inside the
 # webhook request, so Meta gets its answer at once. An account can override it in the admin.
 WANPS_ASYNC = env.bool("WANPS_ASYNC", default=False)
