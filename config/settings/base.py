@@ -343,6 +343,9 @@ TOOL_CALL_RETENTION_DAYS = env.int("TOOL_CALL_RETENTION_DAYS", default=30)
 # without another reply of a person, the bot answers the client again
 BOT_RESUME_AFTER_MINUTES = env.int("BOT_RESUME_AFTER_MINUTES", default=60)
 
+# The time zone the bot tells the date and the time in (the businesses are in Ecuador for now)
+BUSINESS_TIME_ZONE = env("BUSINESS_TIME_ZONE", default="America/Guayaquil")
+
 # Process the messages of the clients (bot replies included) in a Celery worker instead of inside the
 # webhook request, so Meta gets its answer at once. An account can override it in the admin.
 WANPS_ASYNC = env.bool("WANPS_ASYNC", default=False)

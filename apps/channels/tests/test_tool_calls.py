@@ -25,6 +25,8 @@ from apps.tenants.models import Tenant
 
 CLIENT = "593990000001"
 SAFE_GET = "apps.channels.handler.safe_get"
+# The tools every bot has, whatever the tools its business gave it
+INTERNAL_TOOLS = ["get_client_info", "get_previous_messages"]
 
 pytestmark = pytest.mark.usefixtures("inline_processing_and_platform_ai", "no_real_meta_profiles")
 
@@ -36,8 +38,10 @@ class ScriptedAI:
         self.replies = list(replies)
         self.offered = []
         self.tool_results = []
+        self.prompts = []
 
     def generate(self, context, system_prompt="", tools=None):
+        self.prompts.append(system_prompt)
         schemas = tools.to_openai() if tools is not None else []
         self.offered.append([schema["function"] for schema in schemas])
         self.tool_results.append([m.content for m in context.messages if m.role == "tool"])
@@ -87,8 +91,8 @@ def test_the_ai_is_offered_the_active_tools_of_the_account_with_their_parameters
 
     client_writes_to(client, meta_app, ai)
 
-    assert ai.offered_names() == ["opening_hours"]
-    (offered,) = ai.offered[0]
+    assert ai.offered_names() == [*INTERNAL_TOOLS, "opening_hours"]
+    offered = next(tool for tool in ai.offered[0] if tool["name"] == "opening_hours")
     assert offered["description"] == TOOL["description"]
     assert offered["parameters"] == {
         "type": "object",
@@ -100,7 +104,8 @@ def test_the_ai_is_offered_the_active_tools_of_the_account_with_their_parameters
 
 
 @pytest.mark.parametrize(
-    ("number", "expected"), [("111", ["opening_hours"]), ("222", ["rival_tool"])]
+    ("number", "expected"),
+    [("111", [*INTERNAL_TOOLS, "opening_hours"]), ("222", [*INTERNAL_TOOLS, "rival_tool"])],
 )
 def test_the_ai_is_offered_only_the_tools_of_the_account_that_got_the_message(
     admin_client, client, meta_app, link, number, expected
@@ -118,12 +123,14 @@ def test_the_ai_is_offered_only_the_tools_of_the_account_that_got_the_message(
     assert ai.offered_names() == expected
 
 
-def test_an_account_without_tools_is_offered_none(client, meta_app, link):
+def test_an_account_without_tools_of_its_own_is_offered_only_the_internal_ones(
+    client, meta_app, link
+):
     ai = ScriptedAI()
 
     client_writes_to(client, meta_app, ai)
 
-    assert ai.offered == [[]]
+    assert ai.offered_names() == INTERNAL_TOOLS
 
 
 def test_when_the_ai_asks_for_a_tool_the_endpoint_gets_the_values_and_the_key(

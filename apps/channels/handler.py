@@ -9,6 +9,7 @@ from wanps.ai import BaseAIHandler
 from wanps.ai.handlers import AI_LEVEL_TOOLS
 from wanps.ai.tools import Tool
 
+from .bot_context import context_block, internal_tools
 from .models import ChannelTool
 from .safe_http import safe_get
 
@@ -114,14 +115,13 @@ class ChannelAIHandler(BaseAIHandler):
         # The base prompt is the one every AI level uses, so the rule always applies
         instructions = super().get_base_system_prompt(msg).rstrip()
         rule = FORMAT_RULES.get(msg.channel, PLAIN_TEXT_RULE)
-        return "\n".join([instructions, "", "Format of the answers:", rule, ""])
+        context = context_block(msg)
+        return "\n".join([instructions, "", context, "", "Format of the answers:", rule, ""])
 
     def get_ai_level(self, msg) -> int:
-        # The level follows the tools: an account that has one can use them
+        # The bot of an account always has the internal tools, so it always uses the tools level
         level = super().get_ai_level(msg)
-        if level < AI_LEVEL_TOOLS and self.active_tools(msg):
-            return AI_LEVEL_TOOLS
-        return level
+        return max(level, AI_LEVEL_TOOLS) if self.get_account(msg) is not None else level
 
     def get_tools(self, context, msg):
-        return [build_tool(tool) for tool in self.active_tools(msg)]
+        return [*internal_tools(), *(build_tool(tool) for tool in self.active_tools(msg))]
