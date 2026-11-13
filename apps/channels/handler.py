@@ -11,6 +11,7 @@ from wanps.ai.tools import Tool
 
 from .bot_context import context_block, internal_tools
 from .models import ChannelTool
+from .platform_rules import rules_block
 from .safe_http import safe_get
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,18 @@ class ChannelAIHandler(BaseAIHandler):
         instructions = super().get_base_system_prompt(msg).rstrip()
         rule = FORMAT_RULES.get(msg.channel, PLAIN_TEXT_RULE)
         context = context_block(msg)
-        return "\n".join([instructions, "", context, "", "Format of the answers:", rule, ""])
+        parts = [
+            instructions,
+            "",
+            context,
+            "",
+            rules_block(),
+            "",
+            "Format of the answers:",
+            rule,
+            "",
+        ]
+        return "\n".join(parts)
 
     def get_ai_level(self, msg) -> int:
         # The bot of an account always has the internal tools, so it always uses the tools level
