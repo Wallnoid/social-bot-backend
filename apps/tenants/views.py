@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.channels.abuse import daily_limit_until
 from apps.core.throttling import BurstAnonRateThrottle, BurstUserRateThrottle
 
 from .emails import send_invitation_email
@@ -60,6 +61,11 @@ class CurrentTenantView(APIView):
                             "id": serializers.UUIDField(),
                             "name": serializers.CharField(),
                             "role": serializers.ChoiceField(choices=Membership.Role.choices),
+                            "bot_daily_limit_until": serializers.DateTimeField(
+                                allow_null=True,
+                                help_text="Until when the bots of the business are silent because "
+                                "they sent the replies of their day. Empty when they are not.",
+                            ),
                         },
                     ),
                 },
@@ -74,6 +80,7 @@ class CurrentTenantView(APIView):
                     "id": str(request.tenant.id),
                     "name": request.tenant.name,
                     "role": request.membership.role,
+                    "bot_daily_limit_until": daily_limit_until(request.tenant),
                 },
             }
         )

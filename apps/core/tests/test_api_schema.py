@@ -130,7 +130,7 @@ def test_the_current_business_is_in_the_schema_with_its_envelope(schema):
     operation = schema["paths"]["/api/v1/tenants/current/"]["get"]
 
     data = response_data(schema, operation)
-    assert set(data["properties"]) == {"id", "name", "role"}
+    assert set(data["properties"]) == {"id", "name", "role", "bot_daily_limit_until"}
 
 
 def tenant_aware_routes():

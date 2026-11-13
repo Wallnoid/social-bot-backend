@@ -48,6 +48,12 @@ class Tenant(BaseModel):
         related_name="tenants",
         help_text="The business's own Meta App. Empty uses the shared Social Bot app.",
     )
+    bot_max_replies_per_day = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Replies the bots of the business may send in a day. Empty uses the general "
+        "number of the server (BOT_MAX_REPLIES_PER_DAY).",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = "business"

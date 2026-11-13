@@ -52,6 +52,7 @@ def test_current_shows_the_business_i_choose_and_my_role(logged_in, dental, gym)
         "id": str(dental.id),
         "name": "Acme Dental",
         "role": "admin",
+        "bot_daily_limit_until": None,
     }
 
 
@@ -64,6 +65,7 @@ def test_current_switches_when_i_send_another_business(logged_in, dental, gym):
         "id": str(gym.id),
         "name": "Acme Gym",
         "role": "agent",
+        "bot_daily_limit_until": None,
     }
 
 
@@ -123,6 +125,7 @@ def test_current_uses_my_only_business_without_header(logged_in, dental):
         "id": str(dental.id),
         "name": "Acme Dental",
         "role": "admin",
+        "bot_daily_limit_until": None,
     }
 
 

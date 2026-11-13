@@ -123,7 +123,15 @@ class TenantAdmin(admin.ModelAdmin):
     def get_fields(self, request, obj=None):
         if obj is None:
             return super().get_fields(request, obj)
-        return ["name", "industry", "description", "meta_app", "is_deleted", "deleted_at"]
+        return [
+            "name",
+            "industry",
+            "description",
+            "meta_app",
+            "bot_max_replies_per_day",
+            "is_deleted",
+            "deleted_at",
+        ]
 
     def get_inline_instances(self, request, obj=None):
         if obj is None:

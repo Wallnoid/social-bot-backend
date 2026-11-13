@@ -22,7 +22,11 @@ from wanps.messaging.models import Conversation, Message
 from wanps.messaging.signals import message_status_updated
 
 from apps.channels.models import ChannelAccount
-from apps.channels.signals import client_block_changed, client_limit_changed
+from apps.channels.signals import (
+    client_block_changed,
+    client_limit_changed,
+    tenant_daily_limit_reached,
+)
 
 from .realtime import group_of
 from .serializers import ChatMessageSerializer
@@ -180,3 +184,14 @@ def limit_changed(sender, account, contact_id, limited_until, **kwargs):
             "bot_limited_until": limited_until,
         },
     )
+
+
+@receiver(tenant_daily_limit_reached)
+@never_raise
+def daily_limit_reached(sender, account, limited_until, **kwargs):
+    """The bots of the business sent all the replies of its day. It ends by itself, at midnight,
+    and sends nothing: `bot_daily_limit_until` tells when."""
+    link = link_of(account.pk)
+    if link is None:
+        return
+    publish(link, {"type": "daily_limit.reached", "bot_daily_limit_until": limited_until})

@@ -662,3 +662,70 @@ def test_lifting_the_limit_is_sent_with_no_date(tenant, meta_app, settings):
     assert event["type"] == "limit.changed"
     assert (event["contact_id"], event["bot_limited_until"]) == ("ana", None)
     assert extra is True
+
+
+def test_reaching_the_daily_cap_is_told_once_a_day_with_until_when(tenant, meta_app, settings):
+    from apps.channels.abuse import check_daily_limit
+
+    settings.BOT_MAX_REPLIES_PER_DAY = 2
+    link = add_account(tenant, meta_app, "111")
+    for number in range(2):
+        add_message(link, "ana", f"Answer {number}", direction="out")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        first = await sync_to_async(check_daily_limit)(link.account)
+        event = await connection.receive()
+        second = await sync_to_async(check_daily_limit)(link.account)
+        extra = await connection.receives_nothing()
+        await connection.close()
+        return first, event, second, extra
+
+    first, event, second, extra = async_to_sync(scenario)()
+    assert (first, second, extra) == (True, True, True)
+    assert event["type"] == "daily_limit.reached"
+    assert event["bot_daily_limit_until"] is not None
+
+
+def test_below_the_daily_cap_nothing_is_sent(tenant, meta_app, settings):
+    from apps.channels.abuse import check_daily_limit
+
+    settings.BOT_MAX_REPLIES_PER_DAY = 5
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "ana", "Answer", direction="out")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        limited = await sync_to_async(check_daily_limit)(link.account)
+        saw_nothing = await connection.receives_nothing()
+        await connection.close()
+        return limited, saw_nothing
+
+    assert async_to_sync(scenario)() == (False, True)
+
+
+def test_the_daily_cap_of_a_business_never_reaches_another_business(tenant, meta_app, settings):
+    from apps.channels.abuse import check_daily_limit
+
+    settings.BOT_MAX_REPLIES_PER_DAY = 1
+    mine = add_account(tenant, meta_app, "111")
+    add_message(mine, "ana", "Answer", direction="out")
+    rival_tenant = Tenant.objects.create(name="Rival Clinic")
+    add_account(rival_tenant, meta_app, "333")
+    me, them = add_agent(tenant, "me@acme.test"), add_agent(rival_tenant, "them@rival.test")
+
+    async def scenario():
+        mine_connection, _ = await connect_as(me)
+        rival_connection, _ = await connect_as(them)
+        await sync_to_async(check_daily_limit)(mine.account)
+        ours = await mine_connection.receive()
+        rival_saw_nothing = await rival_connection.receives_nothing()
+        await mine_connection.close()
+        await rival_connection.close()
+        return ours, rival_saw_nothing
+
+    ours, rival_saw_nothing = async_to_sync(scenario)()
+    assert ours["type"] == "daily_limit.reached"
+    assert rival_saw_nothing is True

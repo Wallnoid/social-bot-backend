@@ -10,13 +10,15 @@ person can always answer.
 
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
 from .models import ClientStrikes
-from .signals import client_block_changed, client_limit_changed
+from .signals import client_block_changed, client_limit_changed, tenant_daily_limit_reached
 
 logger = logging.getLogger(__name__)
 
@@ -195,3 +197,57 @@ def flag_off_topic(*, account, msg):
         logger.warning("Could not count a fault of a client (%s)", type(exc).__name__)
         return {"instruction": "Answer kindly and bring the conversation back to the business."}
     return {**result, "instruction": instruction_for(result)}
+
+
+def next_midnight():
+    """The start of the next day of the business: when its daily cap starts counting again."""
+    zone = ZoneInfo(settings.BUSINESS_TIME_ZONE)
+    tomorrow = timezone.now().astimezone(zone).date() + timedelta(days=1)
+    return datetime.combine(tomorrow, datetime.min.time(), tzinfo=zone)
+
+
+def replies_today(tenant) -> int:
+    """The replies the bots of the business sent today, in all its accounts (no human author)."""
+    from wanps.messaging.models import Message
+
+    end = next_midnight()
+    return Message.objects.filter(
+        account__channel_account__tenant=tenant,
+        direction=Message.DIRECTION_OUT,
+        sent_by="",
+        created_at__gte=end - timedelta(days=1),
+        created_at__lt=end,
+    ).count()
+
+
+def daily_cap(tenant) -> int:
+    own = tenant.bot_max_replies_per_day
+    return settings.BOT_MAX_REPLIES_PER_DAY if own is None else own
+
+
+def daily_limit_until(tenant):
+    """Until when the bots of the business are silent because of its daily cap, or None."""
+    if replies_today(tenant) < daily_cap(tenant):
+        return None
+    return next_midnight()
+
+
+def check_daily_limit(account) -> bool:
+    """
+    True when the bots of the business of the account sent the replies of its day, so the bot stays
+    silent and the AI is not called. The first time in a day tells the team.
+    """
+    from apps.tenants.models import Tenant
+
+    tenant = Tenant.objects.filter(channel_accounts__account=account).first()
+    if tenant is None:
+        return False
+    until = daily_limit_until(tenant)
+    if until is None:
+        return False
+    # Told once a day: `add` only works the first time, and the key forgets itself the next day
+    if cache.add(f"daily-limit-told:{tenant.pk}:{until.date()}", 1, timeout=60 * 60 * 26):
+        tenant_daily_limit_reached.send(
+            sender=check_daily_limit, account=account, limited_until=until
+        )
+    return True

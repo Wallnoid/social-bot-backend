@@ -12,3 +12,7 @@ client_block_changed = Signal()
 # A client crossed the limit of messages per hour, so the bot is silent with them until a date.
 # Arguments: account, contact_id and limited_until. It ends by itself when the date passes.
 client_limit_changed = Signal()
+
+# The bots of a business sent all the replies of its day, so they are silent until a date.
+# Arguments: account (one of the business) and limited_until. It ends by itself at that date.
+tenant_daily_limit_reached = Signal()

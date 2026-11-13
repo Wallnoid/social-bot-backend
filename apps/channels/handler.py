@@ -9,7 +9,7 @@ from wanps.ai import BaseAIHandler
 from wanps.ai.handlers import AI_LEVEL_TOOLS
 from wanps.ai.tools import Tool
 
-from .abuse import check_flooding, is_blocked
+from .abuse import check_daily_limit, check_flooding, is_blocked
 from .bot_context import context_block, internal_tools
 from .models import ChannelTool
 from .platform_rules import rules_block
@@ -118,6 +118,12 @@ class ChannelAIHandler(BaseAIHandler):
         # Too many messages in an hour: the bot stays silent and the AI is not called. A person can answer
         if account is not None and check_flooding(account, msg.contact_id):
             logger.info("The client of message %s writes too much: not answering.", msg.external_id)
+            return
+        # The business used the replies of its day: nothing is sent to the AI until tomorrow
+        if account is not None and check_daily_limit(account):
+            logger.info(
+                "The business of message %s used its daily replies: not answering.", msg.external_id
+            )
             return
         super().handle(msg)
 
