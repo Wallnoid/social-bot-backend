@@ -39,7 +39,7 @@ def ai():
         yield fake
 
 
-def webhook_payload(channel, external_id):
+def webhook_payload(channel, external_id, message_id=None):
     if channel == "whatsapp":
         return {
             "object": "whatsapp_business_account",
@@ -55,7 +55,7 @@ def webhook_payload(channel, external_id):
                                 "messages": [
                                     {
                                         "from": CLIENT,
-                                        "id": "wamid.1",
+                                        "id": message_id or "wamid.1",
                                         "type": "text",
                                         "text": {"body": "Hi, are you open?"},
                                         "timestamp": "1",
@@ -71,14 +71,14 @@ def webhook_payload(channel, external_id):
         "sender": {"id": CLIENT},
         "recipient": {"id": external_id},
         "timestamp": 1760000000000,
-        "message": {"mid": "m_1", "text": "Hi, are you open?"},
+        "message": {"mid": message_id or "m_1", "text": "Hi, are you open?"},
     }
     obj = "page" if channel == "messenger" else "instagram"
     return {"object": obj, "entry": [{"id": external_id, "time": 1, "messaging": [event]}]}
 
 
-def client_writes(client, meta_app, channel, external_id):
-    body = json.dumps(webhook_payload(channel, external_id)).encode()
+def client_writes(client, meta_app, channel, external_id, message_id=None):
+    body = json.dumps(webhook_payload(channel, external_id, message_id)).encode()
     signature = "sha256=" + hmac.new(b"app-secret", body, hashlib.sha256).hexdigest()
     return client.post(
         meta_app.webhook_path,

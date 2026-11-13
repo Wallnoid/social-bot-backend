@@ -26,7 +26,7 @@ from apps.tenants.models import Tenant
 CLIENT = "593990000001"
 SAFE_GET = "apps.channels.handler.safe_get"
 # The tools every bot has, whatever the tools its business gave it
-INTERNAL_TOOLS = ["get_client_info", "get_previous_messages"]
+INTERNAL_TOOLS = ["get_client_info", "get_previous_messages", "flag_off_topic"]
 
 pytestmark = pytest.mark.usefixtures("inline_processing_and_platform_ai", "no_real_meta_profiles")
 

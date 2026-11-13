@@ -14,6 +14,7 @@ from django.utils import timezone
 from wanps.ai.tools import Tool
 from wanps.messaging.models import Message
 
+from .abuse import flag_off_topic
 from .models import ChannelAccount
 
 MAX_EARLIER_MESSAGES = 30
@@ -132,5 +133,14 @@ def internal_tools():
                     }
                 },
             },
+        ),
+        Tool(
+            flag_off_topic,
+            name="flag_off_topic",
+            description=(
+                "Call it when the message of the client is clearly unrelated to the business. It "
+                "counts a fault of the client and tells you what to say to them: follow it."
+            ),
+            parameters_schema={"type": "object", "properties": {}},
         ),
     ]

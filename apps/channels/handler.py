@@ -9,6 +9,7 @@ from wanps.ai import BaseAIHandler
 from wanps.ai.handlers import AI_LEVEL_TOOLS
 from wanps.ai.tools import Tool
 
+from .abuse import is_blocked
 from .bot_context import context_block, internal_tools
 from .models import ChannelTool
 from .platform_rules import rules_block
@@ -109,6 +110,10 @@ class ChannelAIHandler(BaseAIHandler):
             logger.warning(
                 "Account %s has the bot on without instructions: not answering.", account.pk
             )
+            return
+        # A blocked client costs no AI at all: nothing is built and nothing is sent
+        if account is not None and is_blocked(account, msg.contact_id):
+            logger.info("The client of message %s is blocked: not answering.", msg.external_id)
             return
         super().handle(msg)
 

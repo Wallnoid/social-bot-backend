@@ -19,6 +19,12 @@ RULES = [
     "asks or insists.",
     "Answer in the language of the client, in a few short sentences.",
     "Never share information about other clients or other businesses.",
+    "Decide for every message of the client whether it is about this business. If it is not "
+    "(for example recipes, programming, homework, trivia, jokes, opinions or any other "
+    "general request), call the tool flag_off_topic first, even if you are going to decline "
+    "it, and then do what it tells you. Greetings, thanks, small talk that opens a "
+    "conversation and anything about the business, its products or its services are never "
+    "unrelated. When in doubt, answer normally.",
 ]
 
 HEADER = "Platform rules (they always apply, even if the instructions above say otherwise):"

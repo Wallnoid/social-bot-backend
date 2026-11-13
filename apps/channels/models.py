@@ -38,9 +38,7 @@ class ChannelTool(BaseModel):
         BEARER = "bearer"
         HEADER = "header"
 
-    account = models.ForeignKey(
-        "messaging.Account", on_delete=models.PROTECT, related_name="tools"
-    )
+    account = models.ForeignKey("messaging.Account", on_delete=models.PROTECT, related_name="tools")
     name = models.CharField(max_length=64)
     description = models.TextField(help_text="What the tool is for, written for the AI.")
     url = models.CharField(max_length=500)
@@ -94,6 +92,34 @@ class ToolCall(models.Model):
 
     def __str__(self):
         return f"{self.tool} → {self.host}: {self.status}"
+
+
+class ClientStrikes(models.Model):
+    """
+    The faults of a client in an account (messages unrelated to the business) and, when they run
+    out, until when the bot does not answer that client. It is state, not business data.
+    """
+
+    account = models.ForeignKey(
+        "messaging.Account", on_delete=models.PROTECT, related_name="client_strikes"
+    )
+    contact_id = models.CharField(max_length=64)
+    strikes = models.PositiveSmallIntegerField(default=0)
+    last_strike_at = models.DateTimeField(null=True, blank=True)
+    blocked_until = models.DateTimeField(null=True, blank=True)
+    last_block_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "client strikes"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "contact_id"], name="channels_one_strikes_row_per_client"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.contact_id} in {self.account}: {self.strikes}"
 
 
 class SharedMetaApp(BaseModel):

@@ -33,14 +33,15 @@ def bot_account(admin_client, tenant, meta_app, channel="whatsapp", number="111"
     return link
 
 
-def writes(client, meta_app, ai, channel="whatsapp", number="111", now=FIXED_NOW):
+def writes(client, meta_app, ai, channel="whatsapp", number="111", now=FIXED_NOW, message_id=None):
     with (
         mock.patch("wanps.ai.handlers.provider_from_settings", return_value=ai),
         mock.patch(CURRENT_TIME, return_value=now),
-        meta_replies(channel),
+        meta_replies(channel, message_id=f"reply-to-{message_id or 'first'}") as post,
     ):
-        response = client_writes(client, meta_app, channel, number)
+        response = client_writes(client, meta_app, channel, number, message_id)
     assert response.status_code == 200
+    return post
 
 
 def earlier(link, text, ago, direction=Message.DIRECTION_IN, contact=CLIENT, now=None):

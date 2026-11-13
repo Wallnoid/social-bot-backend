@@ -346,6 +346,15 @@ BOT_RESUME_AFTER_MINUTES = env.int("BOT_RESUME_AFTER_MINUTES", default=60)
 # The time zone the bot tells the date and the time in (the businesses are in Ecuador for now)
 BUSINESS_TIME_ZONE = env("BUSINESS_TIME_ZONE", default="America/Guayaquil")
 
+# A client who insists on messages unrelated to the business: faults before the block, the fault
+# from which the bot warns, hours without a new fault after which they expire, and the minutes of
+# the block (longer when the same client is blocked again within those hours)
+BOT_MAX_STRIKES = env.int("BOT_MAX_STRIKES", default=5)
+BOT_WARN_FROM_STRIKE = env.int("BOT_WARN_FROM_STRIKE", default=2)
+BOT_STRIKES_EXPIRE_HOURS = env.int("BOT_STRIKES_EXPIRE_HOURS", default=24)
+BOT_BLOCK_MINUTES = env.int("BOT_BLOCK_MINUTES", default=60)
+BOT_REPEAT_BLOCK_MINUTES = env.int("BOT_REPEAT_BLOCK_MINUTES", default=24 * 60)
+
 # Process the messages of the clients (bot replies included) in a Celery worker instead of inside the
 # webhook request, so Meta gets its answer at once. An account can override it in the admin.
 WANPS_ASYNC = env.bool("WANPS_ASYNC", default=False)
