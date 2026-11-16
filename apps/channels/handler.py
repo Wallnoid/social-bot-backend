@@ -11,6 +11,7 @@ from wanps.ai.tools import Tool
 
 from .abuse import check_daily_limit, check_flooding, is_blocked
 from .bot_context import context_block, internal_tools
+from .failures import AIUnavailableError, GuardedProvider, record_failure
 from .models import ChannelTool
 from .platform_rules import rules_block
 from .safe_http import safe_get
@@ -125,7 +126,24 @@ class ChannelAIHandler(BaseAIHandler):
                 "The business of message %s used its daily replies: not answering.", msg.external_id
             )
             return
-        super().handle(msg)
+        # The calls to the AI are counted per turn: a retry starts again from zero
+        turns = self.__dict__.setdefault("_ai_calls", {})
+        turns[msg.pk] = 0
+        try:
+            super().handle(msg)
+        finally:
+            turns.pop(msg.pk, None)
+
+    def get_message_provider(self, msg):
+        # Only an error of the AI provider is a failure the bot may try again: anything else (the
+        # prompt, the tools) is a bug
+        turns = self.__dict__.setdefault("_ai_calls", {})
+        return GuardedProvider(super().get_message_provider(msg), turns, msg.pk)
+
+    def on_error(self, msg, error) -> None:
+        super().on_error(msg, error)
+        if isinstance(error, AIUnavailableError):
+            record_failure(msg, retry=error.retry)
 
     def get_base_system_prompt(self, msg) -> str:
         # The base prompt is the one every AI level uses, so the rule always applies

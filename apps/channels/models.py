@@ -124,6 +124,31 @@ class ClientStrikes(models.Model):
         return f"{self.contact_id} in {self.account}: {self.strikes}"
 
 
+class BotFailure(models.Model):
+    """
+    The bot could not answer a client because the AI failed. The row lives while the warning is on:
+    it goes away when the bot or a person answers the chat. It is state, not business data.
+    """
+
+    account = models.ForeignKey(
+        "messaging.Account", on_delete=models.PROTECT, related_name="bot_failures"
+    )
+    contact_id = models.CharField(max_length=64)
+    message = models.ForeignKey("messaging.Message", on_delete=models.CASCADE, related_name="+")
+    failed_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "contact_id"], name="channels_one_bot_failure_per_client"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.contact_id} in {self.account} since {self.failed_at}"
+
+
 class SharedMetaApp(BaseModel):
     """Marks the Meta App that businesses without their own app connect to."""
 

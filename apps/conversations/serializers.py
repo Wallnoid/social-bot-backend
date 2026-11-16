@@ -108,6 +108,11 @@ class ConversationSerializer(serializers.Serializer):
         help_text="Until when the bot is silent with this client because they wrote too many "
         "messages in the last hour. Empty when they are not over the limit.",
     )
+    bot_failed_at = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Since when the bot could not answer this client because the AI failed. It "
+        "goes away when the bot or a person answers. Empty when nothing failed.",
+    )
 
 
 class ChatMessagesSerializer(serializers.Serializer):
@@ -127,6 +132,11 @@ class ChatMessagesSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Until when the bot is silent with this client because they wrote too many "
         "messages in the last hour. Empty when they are not over the limit.",
+    )
+    bot_failed_at = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Since when the bot could not answer this client because the AI failed. It "
+        "goes away when the bot or a person answers. Empty when nothing failed.",
     )
     messages = ChatMessageSerializer(many=True)
     has_more = serializers.BooleanField()

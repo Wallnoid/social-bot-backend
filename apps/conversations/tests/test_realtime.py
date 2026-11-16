@@ -729,3 +729,83 @@ def test_the_daily_cap_of_a_business_never_reaches_another_business(tenant, meta
     ours, rival_saw_nothing = async_to_sync(scenario)()
     assert ours["type"] == "daily_limit.reached"
     assert rival_saw_nothing is True
+
+
+@pytest.fixture
+def no_retries():
+    with mock.patch("apps.channels.failures.retry_bot_reply.apply_async"):
+        yield
+
+
+def test_a_failure_of_the_bot_is_sent_to_the_members_with_since_when(tenant, meta_app, no_retries):
+    from apps.channels.failures import record_failure
+    from apps.channels.models import BotFailure
+
+    link = add_account(tenant, meta_app, "111")
+    message = add_message(link, "ana", "Hola")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        await sync_to_async(record_failure)(message)
+        event = await connection.receive()
+        # The same message failing again is no news
+        await sync_to_async(record_failure)(message)
+        extra = await connection.receives_nothing()
+        await connection.close()
+        return event, extra
+
+    event, extra = async_to_sync(scenario)()
+    assert event["type"] == "failure.changed"
+    assert (event["channel"], event["contact_id"]) == ("whatsapp", "ana")
+    assert event["account"]["id"] == str(link.id)
+    sent = datetime.fromisoformat(event["bot_failed_at"].replace("Z", "+00:00"))
+    assert abs(sent - BotFailure.objects.get().failed_at) < timedelta(milliseconds=1)
+    assert extra is True
+
+
+def test_when_the_failure_goes_away_it_is_sent_with_no_date(tenant, meta_app, no_retries):
+    from apps.channels.failures import record_failure
+
+    link = add_account(tenant, meta_app, "111")
+    message = add_message(link, "ana", "Hola")
+    record_failure(message)
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        # The bot answers the chat: its reply is saved
+        await sync_to_async(add_message)(link, "ana", "Hello, how can I help?", direction="out")
+        events = []
+        while not await connection.receives_nothing():
+            events.append(await connection.receive())
+        await connection.close()
+        return events
+
+    events = async_to_sync(scenario)()
+    failures = [event for event in events if event["type"] == "failure.changed"]
+    assert [(event["contact_id"], event["bot_failed_at"]) for event in failures] == [("ana", None)]
+
+
+def test_the_failure_of_a_client_never_reaches_another_business(tenant, meta_app, no_retries):
+    from apps.channels.failures import record_failure
+
+    mine = add_account(tenant, meta_app, "111")
+    message = add_message(mine, "ana", "Hola")
+    rival_tenant = Tenant.objects.create(name="Rival Clinic")
+    add_account(rival_tenant, meta_app, "333")
+    me, them = add_agent(tenant, "me@acme.test"), add_agent(rival_tenant, "them@rival.test")
+
+    async def scenario():
+        mine_connection, _ = await connect_as(me)
+        rival_connection, _ = await connect_as(them)
+        await sync_to_async(record_failure)(message)
+        ours = await mine_connection.receive()
+        rival_saw_nothing = await rival_connection.receives_nothing()
+        await mine_connection.close()
+        await rival_connection.close()
+        return ours, rival_saw_nothing
+
+    ours, rival_saw_nothing = async_to_sync(scenario)()
+    assert ours["type"] == "failure.changed"
+    assert rival_saw_nothing is True

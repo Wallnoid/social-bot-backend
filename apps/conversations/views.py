@@ -31,6 +31,7 @@ from wanps.messaging.models import Conversation, Message
 from wanps.whatsapp.client import WhatsAppError, list_templates
 
 from apps.channels.abuse import limited_until, limited_untils
+from apps.channels.failures import failed_at, failed_ats
 from apps.channels.models import ChannelAccount, ClientStrikes
 from apps.channels.signals import client_block_changed, client_limit_changed
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
@@ -172,6 +173,7 @@ class ConversationListView(APIView):
             offset=query.validated_data["offset"],
         )
         blocked = blocked_untils(found["conversations"])
+        failed = failed_ats(found["conversations"])
         limited = limited_untils(
             {chat["account"]["id"] for chat in found["conversations"]},
             {chat["contact_id"] for chat in found["conversations"]},
@@ -181,6 +183,7 @@ class ConversationListView(APIView):
                 **chat,
                 "bot_blocked_until": blocked.get((chat["account"]["id"], chat["contact_id"])),
                 "bot_limited_until": limited.get((chat["account"]["id"], chat["contact_id"])),
+                "bot_failed_at": failed.get((chat["account"]["id"], chat["contact_id"])),
                 "contact_name": chat["contact_name"] or GENERIC_NAMES.get(channel, ""),
                 "account": account_of(by_account[chat["account"]["id"]]),
             }
@@ -233,6 +236,7 @@ class MessageListView(APIView):
                 "account": account_of(link),
                 "bot_blocked_until": blocked_until,
                 "bot_limited_until": limited_until(link.account, contact_id),
+                "bot_failed_at": failed_at(link.account, contact_id),
             }
         ).data
         return Response({"success": True, "data": data})

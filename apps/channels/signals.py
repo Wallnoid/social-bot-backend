@@ -16,3 +16,7 @@ client_limit_changed = Signal()
 # The bots of a business sent all the replies of its day, so they are silent until a date.
 # Arguments: account (one of the business) and limited_until. It ends by itself at that date.
 tenant_daily_limit_reached = Signal()
+
+# The bot could not answer a client because the AI failed, or that warning went away.
+# Arguments: account, contact_id and failed_at (a date, or None when the chat was answered).
+bot_failure_changed = Signal()

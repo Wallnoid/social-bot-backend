@@ -23,6 +23,7 @@ from wanps.messaging.signals import message_status_updated
 
 from apps.channels.models import ChannelAccount
 from apps.channels.signals import (
+    bot_failure_changed,
     client_block_changed,
     client_limit_changed,
     tenant_daily_limit_reached,
@@ -195,3 +196,23 @@ def daily_limit_reached(sender, account, limited_until, **kwargs):
     if link is None:
         return
     publish(link, {"type": "daily_limit.reached", "bot_daily_limit_until": limited_until})
+
+
+@receiver(bot_failure_changed)
+@never_raise
+def failure_changed(sender, account, contact_id, failed_at, **kwargs):
+    """The bot could not answer a client because the AI failed (since `failed_at`), or the chat was
+    answered and the warning went away (None)."""
+    link = link_of(account.pk)
+    if link is None:
+        return
+    publish(
+        link,
+        {
+            "type": "failure.changed",
+            "account": account_of(link),
+            "channel": account.channel,
+            "contact_id": contact_id,
+            "bot_failed_at": failed_at,
+        },
+    )

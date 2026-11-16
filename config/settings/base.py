@@ -354,6 +354,10 @@ BOT_MAX_MESSAGES_PER_HOUR = env.int("BOT_MAX_MESSAGES_PER_HOUR", default=20)
 # Replies the bots of a business may send in a day (a business can have its own number): the last
 # defence of the AI spending. Then the bots stay silent until the next day and no AI is called
 BOT_MAX_REPLIES_PER_DAY = env.int("BOT_MAX_REPLIES_PER_DAY", default=500)
+# When the AI fails to answer, minutes after the message of the client at which the bot tries again
+# ...and how long after the message it stops trying, even if a retry runs late
+BOT_RETRY_WINDOW_MINUTES = env.int("BOT_RETRY_WINDOW_MINUTES", default=60)
+BOT_RETRY_MINUTES = env.list("BOT_RETRY_MINUTES", cast=int, default=[1, 5, 15, 30])
 BOT_MAX_STRIKES = env.int("BOT_MAX_STRIKES", default=5)
 BOT_WARN_FROM_STRIKE = env.int("BOT_WARN_FROM_STRIKE", default=2)
 BOT_STRIKES_EXPIRE_HOURS = env.int("BOT_STRIKES_EXPIRE_HOURS", default=24)
