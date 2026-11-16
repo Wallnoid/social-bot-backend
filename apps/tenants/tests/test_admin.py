@@ -131,6 +131,7 @@ def test_admin_edit_form_shows_soft_delete_fields_last(staff_client):
         "industry",
         "description",
         "meta_app",
+        "bot_max_replies_per_day",
         "is_deleted",
         "deleted_at",
     ]
