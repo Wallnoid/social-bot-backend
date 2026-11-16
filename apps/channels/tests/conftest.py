@@ -42,6 +42,17 @@ def inline_processing_and_platform_ai(settings, monkeypatch):
 
 
 @pytest.fixture
+def no_real_meta_sends():
+    """
+    Nothing reaches Meta for real: a retry runs outside the request of the webhook, so whatever
+    the bot sends there (even marking a message as read) would leave the machine. A test that
+    expects a send wraps it in `meta_replies`, which wins inside its block.
+    """
+    with mock.patch("requests.post", side_effect=requests.ConnectionError("no network in tests")):
+        yield
+
+
+@pytest.fixture
 def no_real_meta_profiles():
     """Messenger and Instagram ask Meta for the name of the client: never for real in a test."""
     with mock.patch("requests.get", side_effect=requests.ConnectionError("no network in tests")):

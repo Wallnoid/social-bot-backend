@@ -14,7 +14,9 @@ from apps.channels.tests.test_tool_calls import ScriptedAI
 from apps.conversations.tests.test_inbox import inbox_url, messages_url
 from apps.conversations.tests.test_send import CLIENT
 
-pytestmark = pytest.mark.usefixtures("inline_processing_and_platform_ai", "no_real_meta_profiles")
+pytestmark = pytest.mark.usefixtures(
+    "inline_processing_and_platform_ai", "no_real_meta_profiles", "no_real_meta_sends"
+)
 
 
 class BrokenAI(ScriptedAI):
