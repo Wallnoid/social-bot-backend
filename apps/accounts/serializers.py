@@ -80,6 +80,10 @@ class UserBusinessSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField()
     role = serializers.ChoiceField(choices=Membership.Role.choices)
+    suspended = serializers.BooleanField(
+        help_text="The Social Bot team suspended the business: working in it answers 403 with "
+        "the code business_suspended until it is reactivated."
+    )
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -119,7 +123,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_tenants(self, user):
         """Businesses the user belongs to, with their role in each."""
         return [
-            {"id": str(m.tenant_id), "name": m.tenant.name, "role": m.role}
+            {
+                "id": str(m.tenant_id),
+                "name": m.tenant.name,
+                "role": m.role,
+                "suspended": m.tenant.suspended_at is not None,
+            }
             for m in user.memberships.filter(tenant__is_deleted=False).select_related(
                 "tenant"
             )

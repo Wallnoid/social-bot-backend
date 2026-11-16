@@ -28,6 +28,7 @@ from apps.channels.signals import (
     client_limit_changed,
     tenant_daily_limit_reached,
 )
+from apps.tenants.signals import business_suspended
 
 from .realtime import group_of
 from .serializers import ChatMessageSerializer
@@ -216,3 +217,19 @@ def failure_changed(sender, account, contact_id, failed_at, **kwargs):
             "bot_failed_at": failed_at,
         },
     )
+
+
+@receiver(business_suspended)
+@never_raise
+def close_connections(sender, tenant, **kwargs):
+    """A suspended business: the open connections of its members are closed, once it is saved."""
+
+    def send():
+        try:
+            async_to_sync(get_channel_layer().group_send)(
+                group_of(tenant.pk), {"type": "business.suspended"}
+            )
+        except Exception:
+            logger.exception("Could not close the connections of a suspended business")
+
+    transaction.on_commit(send)

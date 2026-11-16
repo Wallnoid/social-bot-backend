@@ -232,14 +232,16 @@ def daily_limit_until(tenant):
     return next_midnight()
 
 
-def check_daily_limit(account) -> bool:
+def check_daily_limit(account, tenant=None) -> bool:
     """
     True when the bots of the business of the account sent the replies of its day, so the bot stays
-    silent and the AI is not called. The first time in a day tells the team.
+    silent and the AI is not called. The first time in a day tells the team. The handler passes the
+    business it already looked up.
     """
     from apps.tenants.models import Tenant
 
-    tenant = Tenant.objects.filter(channel_accounts__account=account).first()
+    if tenant is None:
+        tenant = Tenant.objects.filter(channel_accounts__account=account).first()
     if tenant is None:
         return False
     until = daily_limit_until(tenant)

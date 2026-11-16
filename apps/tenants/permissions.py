@@ -3,10 +3,15 @@ Permission classes for the tenants app.
 """
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission
 
 from .models import Membership
+
+
+class BusinessSuspended(PermissionDenied):
+    default_detail = "This business is suspended. Contact Social Bot to reactivate it."
+    default_code = "business_suspended"
 
 
 class HasActiveTenant(BasePermission):
@@ -35,6 +40,9 @@ class HasActiveTenant(BasePermission):
                     "Choose the business you work in with the X-Tenant-ID header."
                 )
             membership = found[0]
+        # The Social Bot team suspended it: its members cannot work in it until it is reactivated
+        if membership.tenant.suspended_at is not None:
+            raise BusinessSuspended
         request.membership = membership
         request.tenant = membership.tenant
         return True

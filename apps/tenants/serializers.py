@@ -89,6 +89,16 @@ class InvitationLookupSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"token": [ErrorDetail("The invitation is invalid.", "invitation_invalid")]}
             )
+        if invitation.tenant.suspended_at is not None:
+            raise serializers.ValidationError(
+                {
+                    "token": [
+                        ErrorDetail(
+                            "This business is suspended. Contact Social Bot.", "business_suspended"
+                        )
+                    ]
+                }
+            )
         user = User.objects.filter(email__iexact=invitation.email).first()
         if user is not None and not user.is_active:
             raise serializers.ValidationError(

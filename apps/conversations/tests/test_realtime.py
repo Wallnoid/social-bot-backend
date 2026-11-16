@@ -809,3 +809,83 @@ def test_the_failure_of_a_client_never_reaches_another_business(tenant, meta_app
     ours, rival_saw_nothing = async_to_sync(scenario)()
     assert ours["type"] == "failure.changed"
     assert rival_saw_nothing is True
+
+
+# ---------------------------------------------------------------------------
+# A suspended business
+# ---------------------------------------------------------------------------
+
+
+def suspend(tenant):
+    from django.utils import timezone
+
+    Tenant.objects.filter(pk=tenant.pk).update(suspended_at=timezone.now())
+
+
+def test_a_suspended_business_gets_no_permit_for_the_real_time(tenant):
+    member = add_agent(tenant)
+    suspend(tenant)
+
+    answer = member.post(TICKET_URL)
+
+    assert answer.status_code == 403
+    assert answer.data["code"] == "business_suspended"
+
+
+def test_a_permit_issued_before_the_suspension_does_not_connect(tenant):
+    member = add_agent(tenant)
+    ticket = member.post(TICKET_URL).data["data"]["ticket"]
+    suspend(tenant)
+
+    async def scenario():
+        _, connected = await open_connection(f"/ws/inbox/?ticket={ticket}")
+        return connected
+
+    assert async_to_sync(scenario)() is False
+
+
+def test_suspending_a_business_closes_its_open_connections(tenant):
+    from django.contrib.auth import get_user_model
+    from django.test import Client
+    from django.urls import reverse
+
+    member = add_agent(tenant)
+    other = Tenant.objects.create(name="Rival Clinic")
+    them = add_agent(other, "them@rival.test")
+    staff = Client()
+    staff.force_login(
+        get_user_model().objects.create_superuser(
+            email="staff@example.com", password="staffpass123", first_name="S", last_name="U"
+        )
+    )
+
+    async def scenario():
+        ours, _ = await connect_as(member)
+        theirs, _ = await connect_as(them)
+        await sync_to_async(staff.post)(
+            reverse("admin:tenants_tenant_changelist"),
+            {"action": "suspend", "_selected_action": [str(tenant.pk)]},
+        )
+        closed = await ours.app.receive_output(timeout=2)
+        rival_untouched = await theirs.receives_nothing()
+        await theirs.close()
+        return closed, rival_untouched
+
+    closed, rival_untouched = async_to_sync(scenario)()
+    assert closed["type"] == "websocket.close"
+    assert closed["code"] == 4403
+    assert rival_untouched is True
+
+
+def test_a_connection_that_joins_while_the_business_is_being_suspended_is_closed(tenant):
+    member = add_agent(tenant)
+    ticket = member.post(TICKET_URL).data["data"]["ticket"]
+    suspend(tenant)
+
+    async def scenario():
+        # The check at the door passed just before the suspension
+        with mock.patch("apps.conversations.consumers.is_member", return_value=True):
+            _, connected = await open_connection(f"/ws/inbox/?ticket={ticket}")
+        return connected
+
+    assert async_to_sync(scenario)() is False

@@ -122,7 +122,7 @@ def test_the_businesses_of_a_user_are_a_list_of_id_name_and_role(schema):
 
     assert tenants["type"] == "array"
     item = resolve(schema, tenants["items"])
-    assert set(item["properties"]) == {"id", "name", "role"}
+    assert set(item["properties"]) == {"id", "name", "role", "suspended"}
     assert enum_of(schema, item["properties"]["role"]) == ["agent", "supervisor", "admin"]
 
 

@@ -16,6 +16,7 @@ from apps.accounts.emails import send_set_password_email
 
 from .emails import send_invitation_email
 from .models import Invitation, Membership, Tenant
+from .signals import business_suspended
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -111,9 +112,25 @@ class InvitationInline(admin.TabularInline):
 
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
-    list_display = ["name", "created_at"]
+    list_display = ["name", "suspended_at", "created_at"]
     search_fields = ["name"]
     inlines = [MembershipInline, InvitationInline]
+    actions = ["suspend", "reactivate"]
+
+    @admin.action(description="Suspend the selected businesses (no access and no bot)")
+    def suspend(self, request, queryset):
+        to_suspend = list(queryset.filter(suspended_at__isnull=True))
+        Tenant.objects.filter(pk__in=[tenant.pk for tenant in to_suspend]).update(
+            suspended_at=timezone.now()
+        )
+        for tenant in to_suspend:
+            business_suspended.send(sender=Tenant, tenant=tenant)
+        self.message_user(request, f"{len(to_suspend)} business(es) suspended.")
+
+    @admin.action(description="Reactivate the selected businesses")
+    def reactivate(self, request, queryset):
+        count = queryset.filter(suspended_at__isnull=False).update(suspended_at=None)
+        self.message_user(request, f"{count} business(es) reactivated.")
 
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
@@ -129,9 +146,14 @@ class TenantAdmin(admin.ModelAdmin):
             "description",
             "meta_app",
             "bot_max_replies_per_day",
+            "suspended_at",
             "is_deleted",
             "deleted_at",
         ]
+
+    def get_readonly_fields(self, request, obj=None):
+        # Suspending and reactivating go through the actions, so the date is always the real one
+        return ["suspended_at"] if obj is not None else []
 
     def get_inline_instances(self, request, obj=None):
         if obj is None:

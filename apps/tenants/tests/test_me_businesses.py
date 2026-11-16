@@ -39,7 +39,7 @@ def test_me_shows_the_business_and_my_role(user, logged_in):
     Membership.objects.create(tenant=tenant, user=user, role=Membership.Role.ADMIN)
 
     assert get_tenants(logged_in) == [
-        {"id": str(tenant.id), "name": "Acme Dental", "role": "admin"}
+        {"id": str(tenant.id), "name": "Acme Dental", "role": "admin", "suspended": False}
     ]
 
 
@@ -96,5 +96,5 @@ def test_me_update_response_keeps_showing_my_businesses(user, logged_in):
 
     assert response.data["data"]["first_name"] == "Olga"
     assert response.data["data"]["tenants"] == [
-        {"id": str(tenant.id), "name": "Acme Dental", "role": "admin"}
+        {"id": str(tenant.id), "name": "Acme Dental", "role": "admin", "suspended": False}
     ]

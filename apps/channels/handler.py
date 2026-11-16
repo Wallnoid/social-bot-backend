@@ -88,6 +88,18 @@ def build_tool(tool):
     return Tool(call, name=tool.name, description=tool.description, parameters_schema=schema)
 
 
+def business_of(account):
+    """The business of the account, even if it was deleted (one lookup for the whole message)."""
+    from apps.tenants.models import Tenant
+
+    return Tenant.all_objects.filter(channel_accounts__account=account).first()
+
+
+def is_off(tenant) -> bool:
+    """The Social Bot team suspended the business, or it was deleted."""
+    return tenant is not None and (tenant.suspended_at is not None or tenant.is_deleted)
+
+
 class ChannelAIHandler(BaseAIHandler):
     """Answers with the instructions of the account, written for the channel of the client."""
 
@@ -113,6 +125,11 @@ class ChannelAIHandler(BaseAIHandler):
                 "Account %s has the bot on without instructions: not answering.", account.pk
             )
             return
+        # A suspended or deleted business has no bot: its messages are kept, nothing more
+        tenant = business_of(account) if account is not None else None
+        if is_off(tenant):
+            logger.info("The business of message %s is off: not answering.", msg.external_id)
+            return
         # A blocked client costs no AI at all: nothing is built and nothing is sent
         if account is not None and is_blocked(account, msg.contact_id):
             logger.info("The client of message %s is blocked: not answering.", msg.external_id)
@@ -122,7 +139,7 @@ class ChannelAIHandler(BaseAIHandler):
             logger.info("The client of message %s writes too much: not answering.", msg.external_id)
             return
         # The business used the replies of its day: nothing is sent to the AI until tomorrow
-        if account is not None and check_daily_limit(account):
+        if account is not None and tenant is not None and check_daily_limit(account, tenant):
             logger.info(
                 "The business of message %s used its daily replies: not answering.", msg.external_id
             )

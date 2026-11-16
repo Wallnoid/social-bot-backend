@@ -48,6 +48,12 @@ class Tenant(BaseModel):
         related_name="tenants",
         help_text="The business's own Meta App. Empty uses the shared Social Bot app.",
     )
+    suspended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Since when the business is suspended: its members cannot work in it and its "
+        "bot does not answer. Empty when it is active.",
+    )
     bot_max_replies_per_day = models.PositiveIntegerField(
         null=True,
         blank=True,
