@@ -15,6 +15,7 @@ from django.utils import timezone
 from .models import BotFailure
 from .signals import bot_failure_changed
 from .tasks import retry_bot_reply
+from .usage import record_usage
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +37,25 @@ class GuardedProvider:
     is a failure the bot may try again. It counts the calls of the turn in `turns`.
     """
 
-    def __init__(self, provider, turns: dict, key):
+    def __init__(self, provider, turns: dict, key, account=None, tenant_id=None):
         self.provider = provider
         self.turns = turns
         self.key = key
+        self.account = account
+        self.tenant_id = tenant_id
 
     def generate(self, *args, **kwargs):
         calls = self.turns.get(self.key, 0)
         self.turns[self.key] = calls + 1
         try:
-            return self.provider.generate(*args, **kwargs)
+            response = self.provider.generate(*args, **kwargs)
         except Exception as exc:
             # After the first call of the turn, the AI already asked for tools that ran
             raise AIUnavailableError(type(exc).__name__, retry=calls == 0) from exc
+        if self.account is not None:
+            model = getattr(self.provider, "model", "")
+            record_usage(self.account, self.tenant_id, model, response)
+        return response
 
     def __getattr__(self, name):
         return getattr(self.provider, name)

@@ -15,6 +15,7 @@ from .failures import AIUnavailableError, GuardedProvider, record_failure
 from .models import ChannelTool
 from .platform_rules import rules_block
 from .safe_http import safe_get
+from .usage import tenant_of
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +134,20 @@ class ChannelAIHandler(BaseAIHandler):
             super().handle(msg)
         finally:
             turns.pop(msg.pk, None)
+            self.__dict__.get("_ai_tenants", {}).pop(msg.pk, None)
 
     def get_message_provider(self, msg):
         # Only an error of the AI provider is a failure the bot may try again: anything else (the
         # prompt, the tools) is a bug
         turns = self.__dict__.setdefault("_ai_calls", {})
-        return GuardedProvider(super().get_message_provider(msg), turns, msg.pk)
+        account = self.get_account(msg)
+        # The business of the account is looked up once for the turn, not for each call
+        tenants = self.__dict__.setdefault("_ai_tenants", {})
+        if msg.pk not in tenants:
+            tenants[msg.pk] = tenant_of(account) if account is not None else None
+        return GuardedProvider(
+            super().get_message_provider(msg), turns, msg.pk, account, tenants[msg.pk]
+        )
 
     def on_error(self, msg, error) -> None:
         super().on_error(msg, error)

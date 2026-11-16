@@ -1,0 +1,16 @@
+{% extends "admin/change_list.html" %}
+
+{% block result_list %}
+  {% if totals %}
+    <p class="help">
+      <strong>Total of what is shown:</strong>
+      {{ totals.calls|default:0 }} calls,
+      {{ totals.input_tokens|default:0 }} input tokens
+      ({{ totals.cached_tokens|default:0 }} of them from the cache),
+      {{ totals.output_tokens|default:0 }} output tokens,
+      {{ totals.thinking_tokens|default:0 }} thinking tokens
+      (the thinking tokens are billed as output).
+    </p>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

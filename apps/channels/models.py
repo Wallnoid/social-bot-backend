@@ -149,6 +149,46 @@ class BotFailure(models.Model):
         return f"{self.contact_id} in {self.account} since {self.failed_at}"
 
 
+class AIUsage(models.Model):
+    """
+    How much AI a business used in a day: calls and tokens, by model and by who pays (the platform
+    with its own key, or the business with the key of its account). One row for each day, so it
+    stays small. It has no prices: the money is worked out later, from these numbers.
+    """
+
+    class PaidBy(models.TextChoices):
+        PLATFORM = "platform", "Platform"
+        BUSINESS = "business", "Business (own key)"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="ai_usage")
+    day = models.DateField(help_text="The day in the time zone of BUSINESS_TIME_ZONE.")
+    model = models.CharField(max_length=100)
+    paid_by = models.CharField(max_length=10, choices=PaidBy.choices)
+    calls = models.PositiveIntegerField(default=0)
+    input_tokens = models.PositiveBigIntegerField(default=0)
+    output_tokens = models.PositiveBigIntegerField(default=0)
+    thinking_tokens = models.PositiveBigIntegerField(
+        default=0, help_text="Billed by the provider as output."
+    )
+    cached_tokens = models.PositiveBigIntegerField(
+        default=0,
+        help_text="The part of the input tokens served from the cache of the provider, which it "
+        "charges less for.",
+    )
+
+    class Meta:
+        verbose_name = "AI usage"
+        verbose_name_plural = "AI usage"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "day", "model", "paid_by"], name="channels_one_ai_usage_per_day"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.tenant} {self.day} {self.model} ({self.paid_by})"
+
+
 class SharedMetaApp(BaseModel):
     """Marks the Meta App that businesses without their own app connect to."""
 
