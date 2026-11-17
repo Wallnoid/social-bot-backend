@@ -264,6 +264,14 @@ def test_api_docs_describe_connecting_an_account_without_its_token_in_the_respon
     assert data["properties"]["id"]["format"] == "uuid"
 
 
+def test_api_docs_ask_for_the_business_header_on_listing_and_connecting_accounts():
+    schema = SchemaGenerator().get_schema(request=None, public=True)
+
+    for method in ("get", "post"):
+        parameters = schema["paths"][ACCOUNTS_URL][method]["parameters"]
+        assert "X-Tenant-ID" in [p["name"] for p in parameters]
+
+
 def test_an_account_without_an_access_token_is_rejected(admin_client):
     SharedMetaApp.objects.create(app=add_app("Social Bot"))
     data = {"channel": "whatsapp", "name": "Front desk", "external_id": "111", "business_id": "9"}

@@ -280,3 +280,12 @@ def test_editing_locks_the_app_while_it_is_checked(admin_client):
         admin_client.patch(META_APP_URL, {"name": "Renamed"}, format="json")
 
     assert any("FOR NO KEY UPDATE" in query["sql"] for query in queries)
+
+
+def test_api_docs_describe_the_short_answer_for_a_shared_meta_app():
+    schema = SchemaGenerator().get_schema(request=None, public=True)
+    components = schema["components"]["schemas"]
+
+    options = [part["$ref"].rsplit("/", 1)[1] for part in components["MetaAppRead"]["oneOf"]]
+    assert "SharedMetaApp" in options
+    assert set(components["SharedMetaApp"]["properties"]) == {"name", "is_active", "shared"}

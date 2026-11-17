@@ -191,3 +191,13 @@ class MetaAppSerializer(serializers.ModelSerializer):
     def get_webhook_url(self, app) -> str:
         path = reverse("messaging:meta-webhook", kwargs={"webhook_key": app.webhook_key})
         return self.context["request"].build_absolute_uri(path)
+
+
+class SharedMetaAppSerializer(serializers.Serializer):
+    """What a business sees of a Meta App it does not own: enough to know it is in use."""
+
+    name = serializers.CharField()
+    is_active = serializers.BooleanField()
+    shared = serializers.BooleanField(
+        help_text="Always true: the app is shared, so it cannot be edited here."
+    )

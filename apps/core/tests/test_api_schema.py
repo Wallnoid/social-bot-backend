@@ -4,6 +4,7 @@ The OpenAPI schema the frontend generates its types from.
 
 import json
 import re
+from types import SimpleNamespace
 
 import pytest
 from django.conf import settings
@@ -133,13 +134,24 @@ def test_the_current_business_is_in_the_schema_with_its_envelope(schema):
     assert set(data["properties"]) == {"id", "name", "role", "bot_daily_limit_until"}
 
 
+def needs_a_business(view_class, method):
+    """From the code: in `permission_classes`, or picked by `get_permissions()` for this method."""
+    if HasActiveTenant in getattr(view_class, "permission_classes", []):
+        return True
+    view = view_class()
+    view.request = SimpleNamespace(method=method.upper())
+    try:
+        return any(isinstance(p, HasActiveTenant) for p in view.get_permissions())
+    except Exception:
+        return False
+
+
 def tenant_aware_routes():
     """The (route, method) of every view that works inside a business, from the code."""
     for route, method, view in EndpointEnumerator().get_api_endpoints():
         route = re.sub(r"<(?:\w+:)?(\w+)>", r"{\1}", route)
         route = re.sub(r"\{format\}$", "", route)
-        needs_business = HasActiveTenant in getattr(view.cls, "permission_classes", [])
-        yield route, method.lower(), needs_business
+        yield route, method.lower(), needs_a_business(view.cls, method)
 
 
 def test_the_business_header_is_declared_exactly_where_a_business_is_needed(schema):

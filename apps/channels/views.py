@@ -4,7 +4,11 @@ Views for the channels app.
 
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    PolymorphicProxySerializer,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import generics, serializers, status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -20,6 +24,7 @@ from .serializers import (
     ChannelAccountSerializer,
     ConnectAccountSerializer,
     MetaAppSerializer,
+    SharedMetaAppSerializer,
     UpdateAccountSerializer,
 )
 from .services import disconnect
@@ -176,7 +181,17 @@ class MetaAppView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated, HasActiveTenant, IsTenantAdmin]
 
     @extend_schema(
-        responses={200: envelope("MetaAppReadResponse", MetaAppSerializer(allow_null=True))}
+        responses={
+            200: envelope(
+                "MetaAppReadResponse",
+                PolymorphicProxySerializer(
+                    component_name="MetaAppRead",
+                    serializers=[MetaAppSerializer, SharedMetaAppSerializer],
+                    resource_type_field_name=None,
+                    allow_null=True,
+                ),
+            )
+        }
     )
     def get(self, request):
         app = request.tenant.meta_app
