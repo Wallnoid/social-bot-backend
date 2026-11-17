@@ -14,6 +14,7 @@ from .token_views import (
     CookieTokenBlacklistView,
     CookieTokenObtainPairView,
     CookieTokenRefreshView,
+    LogoutAllView,
 )
 from .views import PasswordResetView, SetPasswordView, UserViewSet
 
@@ -30,6 +31,7 @@ urlpatterns = [
     path("token/refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),
     path("token/verify/", TokenVerifyView.as_view(), name="token_verify"),
     path("token/blacklist/", CookieTokenBlacklistView.as_view(), name="token_blacklist"),
+    path("token/logout-all/", LogoutAllView.as_view(), name="logout_all"),
     # Users
     path("", include(router.urls)),
 ]

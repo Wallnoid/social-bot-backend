@@ -37,10 +37,10 @@ def user(db):
     )
 
 
-def log_in(api):
+def log_in(api, **extra):
     return api.post(
         reverse("accounts:token_obtain_pair"),
-        {"email": EMAIL, "password": PASSWORD},
+        {"email": EMAIL, "password": PASSWORD, **extra},
         format="json",
     )
 
@@ -59,7 +59,6 @@ def test_login_returns_the_access_token_and_puts_the_refresh_token_in_an_httponl
     assert cookie["httponly"]
     assert cookie["samesite"] == "Strict"
     assert cookie["path"] == "/api/v1/accounts/"
-    assert int(cookie["max-age"]) == 7 * 24 * 60 * 60
     assert not cookie["domain"]
 
 
@@ -232,3 +231,93 @@ def test_the_cookie_is_always_secure_in_production():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "True"
+
+
+def test_without_remember_me_the_cookie_lasts_until_the_browser_closes(api_client, user):
+    cookie = log_in(api_client).cookies[COOKIE]
+
+    assert not cookie["max-age"]
+    assert not cookie["expires"]
+
+
+def test_with_remember_me_the_cookie_lasts_seven_days(api_client, user):
+    cookie = log_in(api_client, remember_me=True).cookies[COOKIE]
+
+    assert int(cookie["max-age"]) == 7 * 24 * 60 * 60
+
+
+def test_the_choice_survives_every_refresh(api_client, user):
+    log_in(api_client, remember_me=True)
+    kept = api_client.post(reverse("accounts:token_refresh"), **AJAX).cookies[COOKIE]
+    assert int(kept["max-age"]) == 7 * 24 * 60 * 60
+
+    other = APIClient()
+    log_in(other)
+    session = other.post(reverse("accounts:token_refresh"), **AJAX).cookies[COOKIE]
+    assert not session["max-age"]
+
+
+def test_changing_the_password_keeps_the_choice_of_this_device(api_client, user):
+    access = log_in(api_client, remember_me=True).data["access"]
+
+    response = api_client.post(
+        reverse("accounts:user-change-password"),
+        {
+            "old_password": PASSWORD,
+            "new_password": "an-Even-Longer-pass-42",
+            "new_password_confirm": "an-Even-Longer-pass-42",
+        },
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {access}",
+    )
+
+    assert response.status_code == 200
+    assert int(response.cookies[COOKIE]["max-age"]) == 7 * 24 * 60 * 60
+
+
+def test_remember_me_must_be_a_boolean(api_client, user):
+    assert log_in(api_client, remember_me="maybe").status_code == 400
+
+
+def test_logout_all_closes_every_session_and_deletes_the_cookie(api_client, user):
+    phone = APIClient()
+    log_in(phone)
+    phone_cookie = phone.cookies[COOKIE].value
+    access = log_in(api_client).data["access"]
+
+    response = api_client.post(
+        reverse("accounts:logout_all"), HTTP_AUTHORIZATION=f"Bearer {access}"
+    )
+
+    assert response.status_code == 200
+    assert response.cookies[COOKIE]["max-age"] == 0
+    assert api_client.post(reverse("accounts:token_refresh"), **AJAX).status_code == 401
+    phone.cookies[COOKIE] = phone_cookie
+    assert phone.post(reverse("accounts:token_refresh"), **AJAX).status_code == 401
+
+
+def test_logout_all_needs_a_logged_in_user(api_client, user):
+    assert api_client.post(reverse("accounts:logout_all")).status_code == 401
+
+
+def test_logout_all_does_not_touch_the_sessions_of_other_users(api_client, user):
+    other = User.objects.create_user(email="other@example.com", password=PASSWORD)
+    other_client = APIClient()
+    other_client.post(
+        reverse("accounts:token_obtain_pair"),
+        {"email": other.email, "password": PASSWORD},
+        format="json",
+    )
+    access = log_in(api_client).data["access"]
+
+    api_client.post(reverse("accounts:logout_all"), HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    assert other_client.post(reverse("accounts:token_refresh"), **AJAX).status_code == 200
+
+
+def test_the_docs_describe_remember_me_and_logout_all():
+    schema = SchemaGenerator().get_schema(request=None, public=True)
+    login = schema["components"]["schemas"]["LoginRequest"]
+
+    assert "remember_me" in login["properties"]
+    assert "post" in schema["paths"]["/api/v1/accounts/token/logout-all/"]

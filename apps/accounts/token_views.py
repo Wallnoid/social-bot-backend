@@ -18,8 +18,11 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import (
@@ -29,6 +32,8 @@ from rest_framework_simplejwt.views import (
 )
 
 from apps.core.throttling import BurstAnonRateThrottle
+
+REMEMBER_CLAIM = "remember"
 
 ACCESS_ONLY = inline_serializer("AccessToken", {"access": serializers.CharField()})
 
@@ -60,11 +65,23 @@ def delete_refresh_cookie(response):
     response.delete_cookie(settings.AUTH_REFRESH_COOKIE_NAME, **cookie_scope())
 
 
-def set_refresh_cookie(response, token):
+def remembered(token) -> bool:
+    """Whether the session was started with "remember me" (a claim that rotation keeps)."""
+    try:
+        return bool(RefreshToken(token).get(REMEMBER_CLAIM, False))
+    except TokenError:
+        return False
+
+
+def set_refresh_cookie(response, token, remember=False):
+    """Without `remember` the cookie lasts until the browser closes; with it, as long as the token."""
+    max_age = None
+    if remember:
+        max_age = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
     response.set_cookie(
         settings.AUTH_REFRESH_COOKIE_NAME,
         token,
-        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        max_age=max_age,
         secure=settings.AUTH_REFRESH_COOKIE_SECURE,
         httponly=True,
         **cookie_scope(),
@@ -81,24 +98,42 @@ def revoke_all_refresh_tokens(user):
     )
 
 
-def start_new_session(response, user):
+def start_new_session(response, user, remember=False):
     """Give this device a fresh session: the access token in the body, the refresh in the cookie."""
     refresh = RefreshToken.for_user(user)
+    refresh[REMEMBER_CLAIM] = remember
     response.data["access"] = str(refresh.access_token)
-    set_refresh_cookie(response, str(refresh))
+    set_refresh_cookie(response, str(refresh), remember)
     return response
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    """Email and password, and whether this device keeps the session after the browser closes."""
+
+    remember_me = serializers.BooleanField(required=False, default=False, write_only=True)
+
+    def validate(self, attrs):
+        remember = attrs.pop("remember_me", False)
+        data = super().validate(attrs)
+        data["remember_me"] = remember
+        return data
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     """Login: the access token in the body, the refresh token in the cookie."""
 
     throttle_classes = [BurstAnonRateThrottle]
+    serializer_class = LoginSerializer
 
     @extend_schema(responses={200: ACCESS_ONLY})
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
-            set_refresh_cookie(response, response.data.pop("refresh"))
+            remember = response.data.pop("remember_me")
+            # Same token (same jti), now carrying the choice, so every rotation keeps it
+            refresh = RefreshToken(response.data.pop("refresh"))
+            refresh[REMEMBER_CLAIM] = remember
+            set_refresh_cookie(response, str(refresh), remember)
         return response
 
 
@@ -128,7 +163,7 @@ class CookieTokenRefreshView(TokenRefreshView):
         refresh = data.pop("refresh", None)
         response = Response(data)
         if refresh:
-            set_refresh_cookie(response, refresh)
+            set_refresh_cookie(response, refresh, remembered(refresh))
         return response
 
 
@@ -151,5 +186,26 @@ class CookieTokenBlacklistView(TokenBlacklistView):
             with contextlib.suppress(TokenError):
                 RefreshToken(token).blacklist()
         response = Response({})
+        delete_refresh_cookie(response)
+        return response
+
+
+class LogoutAllView(APIView):
+    """Close every session of the user, this device included."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=None,
+        responses={
+            200: OpenApiResponse(
+                description="No refresh token of the user works any more and the cookie of this "
+                "device is deleted. Access tokens already issued last until they expire."
+            ),
+        },
+    )
+    def post(self, request):
+        revoke_all_refresh_tokens(request.user)
+        response = Response({"success": True, "message": "Every session was closed."})
         delete_refresh_cookie(response)
         return response

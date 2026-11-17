@@ -7,6 +7,7 @@ Provides:
 - User detail/update (account owner)
 """
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -25,7 +26,7 @@ from .serializers import (
     UserSerializer,
 )
 from .tasks import send_password_reset_email_to
-from .token_views import revoke_all_refresh_tokens, start_new_session
+from .token_views import remembered, revoke_all_refresh_tokens, start_new_session
 
 User = get_user_model()
 
@@ -92,9 +93,7 @@ class SetPasswordView(generics.GenericAPIView):
             user.set_password(serializer.validated_data["new_password"])
             user.save()
             revoke_all_refresh_tokens(user)
-        return Response(
-            {"success": True, "message": "Password created successfully."}
-        )
+        return Response({"success": True, "message": "Password created successfully."})
 
 
 class UserViewSet(
@@ -165,9 +164,7 @@ class UserViewSet(
 
         if request.method == "GET":
             serializer = self.get_serializer(user)
-            return Response(
-                {"success": True, "data": serializer.data}
-            )
+            return Response({"success": True, "data": serializer.data})
 
         serializer = self.get_serializer(
             user, data=request.data, partial=(request.method == "PATCH")
@@ -212,10 +209,13 @@ class UserViewSet(
         serializer.is_valid(raise_exception=True)
 
         user = request.user
+        # Read before revoking: this device keeps the choice it made when it logged in
+        cookie = request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        keep_session = bool(cookie) and remembered(cookie)
         with transaction.atomic():
             user.set_password(serializer.validated_data["new_password"])
             user.save()
             revoke_all_refresh_tokens(user)
 
         response = Response({"success": True, "message": "Password changed successfully."})
-        return start_new_session(response, user)
+        return start_new_session(response, user, remember=keep_session)
