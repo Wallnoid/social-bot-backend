@@ -126,12 +126,15 @@ def test_admin_edit_form_shows_soft_delete_fields_last(staff_client):
 
     response = staff_client.get(reverse("admin:tenants_tenant_change", args=[tenant.pk]))
 
-    assert list(response.context["adminform"].form.fields) == [
+    # The fields the page shows, in order: the state ones are read only, the deletion ones last
+    _, options = response.context["adminform"].fieldsets[0]
+    assert list(options["fields"]) == [
         "name",
         "industry",
         "description",
         "meta_app",
         "bot_max_replies_per_day",
+        "suspended_at",
         "is_deleted",
         "deleted_at",
     ]
