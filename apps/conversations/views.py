@@ -32,6 +32,7 @@ from wanps.whatsapp.client import WhatsAppError, list_templates
 
 from apps.channels.abuse import limited_until, limited_untils
 from apps.channels.failures import failed_at, failed_ats
+from apps.channels.handover import take_chat, waiting_since, waiting_sinces
 from apps.channels.models import ChannelAccount, ClientStrikes
 from apps.channels.signals import client_block_changed, client_limit_changed
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
@@ -174,6 +175,7 @@ class ConversationListView(APIView):
         )
         blocked = blocked_untils(found["conversations"])
         failed = failed_ats(found["conversations"])
+        waiting = waiting_sinces(found["conversations"])
         limited = limited_untils(
             {chat["account"]["id"] for chat in found["conversations"]},
             {chat["contact_id"] for chat in found["conversations"]},
@@ -184,6 +186,9 @@ class ConversationListView(APIView):
                 "bot_blocked_until": blocked.get((chat["account"]["id"], chat["contact_id"])),
                 "bot_limited_until": limited.get((chat["account"]["id"], chat["contact_id"])),
                 "bot_failed_at": failed.get((chat["account"]["id"], chat["contact_id"])),
+                "waiting_for_person_since": waiting.get(
+                    (chat["account"]["id"], chat["contact_id"])
+                ),
                 "contact_name": chat["contact_name"] or GENERIC_NAMES.get(channel, ""),
                 "account": account_of(by_account[chat["account"]["id"]]),
             }
@@ -237,6 +242,7 @@ class MessageListView(APIView):
                 "bot_blocked_until": blocked_until,
                 "bot_limited_until": limited_until(link.account, contact_id),
                 "bot_failed_at": failed_at(link.account, contact_id),
+                "waiting_for_person_since": waiting_since(link.account, contact_id),
             }
         ).data
         return Response({"success": True, "data": data})
@@ -487,6 +493,9 @@ class SendMessageView(APIView):
         link, inbox = chat_scope(request, channel, body.validated_data["account"])
         if template:
             check_template(link, inbox, contact_id, template)
+        # Known before sending: the pause of a chat that waits for a person has no end, like one
+        # set by hand, but this reply takes the chat, so it becomes the pause of an hour
+        waited = waiting_since(link.account, contact_id) is not None
         try:
             sent = send_message(
                 inbox,
@@ -520,13 +529,18 @@ class SendMessageView(APIView):
             raise MessageNotDelivered from None
         # A person is talking: the bot waits, and takes the chat back after an hour without them.
         # A pause that someone set by hand, with no end, stays until someone resumes the bot
-        by_hand = Conversation.objects.filter(
-            account=link.account,
-            contact_id=contact_id,
-            channel=channel,
-            bot_paused=True,
-            bot_paused_until__isnull=True,
-        ).exists()
+        if waited:
+            take_chat(link.account, contact_id)
+        by_hand = (
+            not waited
+            and Conversation.objects.filter(
+                account=link.account,
+                contact_id=contact_id,
+                channel=channel,
+                bot_paused=True,
+                bot_paused_until__isnull=True,
+            ).exists()
+        )
         if not by_hand:
             set_bot_paused(
                 inbox,
@@ -581,6 +595,9 @@ class BotView(APIView):
             paused_by=request.user.full_name,
             channel=channel,
         )
+        # Someone of the team decided about the bot of this chat (paused or resumed it), so it no
+        # longer waits for a person: an endless pause set here is now a pause set by hand
+        take_chat(link.account, contact_id)
         data = BotStateSerializer({**state, "account": account_of(link)}).data
         return Response({"success": True, "data": data})
 

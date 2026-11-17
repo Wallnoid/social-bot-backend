@@ -889,3 +889,90 @@ def test_a_connection_that_joins_while_the_business_is_being_suspended_is_closed
         return connected
 
     assert async_to_sync(scenario)() is False
+
+
+# ---------------------------------------------------------------------------
+# A chat that waits for a person
+# ---------------------------------------------------------------------------
+
+
+def handed_over(link, contact="ana"):
+    from apps.channels.handover import ask_for_a_person
+
+    message = Message.objects.filter(account=link.account, contact_id=contact).first()
+    return ask_for_a_person(account=link.account, msg=message)
+
+
+def test_asking_for_a_person_is_sent_to_the_members_with_since_when(tenant, meta_app):
+    from apps.channels.models import Handover
+
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "ana", "I want to talk to a person")
+    member = add_agent(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(member)
+        await sync_to_async(handed_over)(link)
+        events = []
+        while not await connection.receives_nothing():
+            events.append(await connection.receive())
+        await connection.close()
+        return events
+
+    events = async_to_sync(scenario)()
+    handovers = [event for event in events if event["type"] == "handover.changed"]
+    assert len(handovers) == 1
+    event = handovers[0]
+    assert (event["channel"], event["contact_id"]) == ("whatsapp", "ana")
+    assert event["account"]["id"] == str(link.id)
+    sent = datetime.fromisoformat(event["waiting_for_person_since"].replace("Z", "+00:00"))
+    assert abs(sent - Handover.objects.get().since) < timedelta(milliseconds=1)
+
+
+def test_when_the_mark_goes_away_it_is_sent_with_no_date(tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "ana", "I want to talk to a person")
+    handed_over(link)
+    supervisor = add_supervisor(tenant)
+
+    async def scenario():
+        connection, _ = await connect_as(supervisor)
+        # A person resumes the bot: the chat no longer waits
+        await sync_to_async(supervisor.post)(
+            inbox_url("whatsapp", "ana", "bot"),
+            {"account": str(link.id), "paused": False},
+            format="json",
+        )
+        events = []
+        while not await connection.receives_nothing():
+            events.append(await connection.receive())
+        await connection.close()
+        return events
+
+    events = async_to_sync(scenario)()
+    handovers = [event for event in events if event["type"] == "handover.changed"]
+    assert [(e["contact_id"], e["waiting_for_person_since"]) for e in handovers] == [("ana", None)]
+
+
+def test_the_handover_never_reaches_another_business(tenant, meta_app):
+    mine = add_account(tenant, meta_app, "111")
+    add_message(mine, "ana", "I want to talk to a person")
+    rival_tenant = Tenant.objects.create(name="Rival Clinic")
+    add_account(rival_tenant, meta_app, "333")
+    me, them = add_agent(tenant, "me@acme.test"), add_agent(rival_tenant, "them@rival.test")
+
+    async def scenario():
+        mine_connection, _ = await connect_as(me)
+        rival_connection, _ = await connect_as(them)
+        await sync_to_async(handed_over)(mine)
+        ours = []
+        while not await mine_connection.receives_nothing():
+            ours.append(await mine_connection.receive())
+        rival_saw_nothing = await rival_connection.receives_nothing()
+        await mine_connection.close()
+        await rival_connection.close()
+        return ours, rival_saw_nothing
+
+    ours, rival_saw_nothing = async_to_sync(scenario)()
+    assert "handover.changed" in [event["type"] for event in ours]
+    assert rival_saw_nothing is True

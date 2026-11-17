@@ -149,6 +149,29 @@ class BotFailure(models.Model):
         return f"{self.contact_id} in {self.account} since {self.failed_at}"
 
 
+class Handover(models.Model):
+    """
+    A chat that waits for a person: the bot asked for one and stays silent. The row lives while the
+    chat waits, until a person replies or someone resumes the bot. It is state, not business data.
+    """
+
+    account = models.ForeignKey(
+        "messaging.Account", on_delete=models.PROTECT, related_name="handovers"
+    )
+    contact_id = models.CharField(max_length=64)
+    since = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "contact_id"], name="channels_one_handover_per_client"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.contact_id} in {self.account} waits since {self.since}"
+
+
 class AIUsage(models.Model):
     """
     How much AI a business used in a day: calls and tokens, by model and by who pays (the platform

@@ -113,6 +113,11 @@ class ConversationSerializer(serializers.Serializer):
         help_text="Since when the bot could not answer this client because the AI failed. It "
         "goes away when the bot or a person answers. Empty when nothing failed.",
     )
+    waiting_for_person_since = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Since when this chat waits for a person: the bot asked for one and stays "
+        "silent until a person replies or someone resumes the bot. Empty when it does not wait.",
+    )
 
 
 class ChatMessagesSerializer(serializers.Serializer):
@@ -137,6 +142,11 @@ class ChatMessagesSerializer(serializers.Serializer):
         allow_null=True,
         help_text="Since when the bot could not answer this client because the AI failed. It "
         "goes away when the bot or a person answers. Empty when nothing failed.",
+    )
+    waiting_for_person_since = serializers.DateTimeField(
+        allow_null=True,
+        help_text="Since when this chat waits for a person: the bot asked for one and stays "
+        "silent until a person replies or someone resumes the bot. Empty when it does not wait.",
     )
     messages = ChatMessageSerializer(many=True)
     has_more = serializers.BooleanField()

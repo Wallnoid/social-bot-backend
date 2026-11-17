@@ -20,3 +20,7 @@ tenant_daily_limit_reached = Signal()
 # The bot could not answer a client because the AI failed, or that warning went away.
 # Arguments: account, contact_id and failed_at (a date, or None when the chat was answered).
 bot_failure_changed = Signal()
+
+# A chat started or stopped waiting for a person. Arguments: account, contact_id and since (a date,
+# or None when a person took the chat).
+handover_changed = Signal()

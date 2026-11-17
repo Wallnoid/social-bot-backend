@@ -26,6 +26,7 @@ from apps.channels.signals import (
     bot_failure_changed,
     client_block_changed,
     client_limit_changed,
+    handover_changed,
     tenant_daily_limit_reached,
 )
 from apps.tenants.signals import business_suspended
@@ -233,3 +234,22 @@ def close_connections(sender, tenant, **kwargs):
             logger.exception("Could not close the connections of a suspended business")
 
     transaction.on_commit(send)
+
+
+@receiver(handover_changed)
+@never_raise
+def handover_changed_event(sender, account, contact_id, since, **kwargs):
+    """A chat started waiting for a person (since `since`), or a person took it (None)."""
+    link = link_of(account.pk)
+    if link is None:
+        return
+    publish(
+        link,
+        {
+            "type": "handover.changed",
+            "account": account_of(link),
+            "channel": account.channel,
+            "contact_id": contact_id,
+            "waiting_for_person_since": since,
+        },
+    )

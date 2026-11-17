@@ -25,6 +25,9 @@ RULES = [
     "it, and then do what it tells you. Greetings, thanks, small talk that opens a "
     "conversation and anything about the business, its products or its services are never "
     "unrelated. When in doubt, answer normally.",
+    "If the client asks to talk to a person, or has a complaint or a case your instructions do "
+    "not cover, call the tool ask_for_a_person and then do what it tells you. Do not ask for a "
+    "person for questions you can answer.",
 ]
 
 HEADER = "Platform rules (they always apply, even if the instructions above say otherwise):"

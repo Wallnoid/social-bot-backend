@@ -15,6 +15,7 @@ from wanps.ai.tools import Tool
 from wanps.messaging.models import Message
 
 from .abuse import flag_off_topic
+from .handover import ask_for_a_person
 from .models import ChannelAccount
 
 MAX_EARLIER_MESSAGES = 30
@@ -140,6 +141,16 @@ def internal_tools():
             description=(
                 "Call it when the message of the client is clearly unrelated to the business. It "
                 "counts a fault of the client and tells you what to say to them: follow it."
+            ),
+            parameters_schema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            ask_for_a_person,
+            name="ask_for_a_person",
+            description=(
+                "Hand this chat over to a person of the business: you stop answering it until a "
+                "person replies. Call it when the client asks to talk to a person, or has a "
+                "complaint or a case your instructions do not cover, and then do what it tells you."
             ),
             parameters_schema={"type": "object", "properties": {}},
         ),
