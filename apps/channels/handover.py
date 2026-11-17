@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 from wanps.messaging.models import Conversation
 
+from .chat_state import of_chat, per_chat
 from .models import Handover
 from .signals import handover_changed
 
@@ -36,17 +37,11 @@ def ask_for_a_person(*, account, msg):
 
 def waiting_sinces(chats) -> dict:
     """Since when each client of the chats waits for a person, as {(account, client): date}."""
-    rows = Handover.objects.filter(
-        account_id__in={chat["account"]["id"] for chat in chats},
-        contact_id__in={chat["contact_id"] for chat in chats},
-    )
-    return {(row.account_id, row.contact_id): row.since for row in rows}
+    return per_chat(Handover.objects, chats, "since")
 
 
 def waiting_since(account, contact_id):
-    return waiting_sinces([{"account": {"id": account.pk}, "contact_id": contact_id}]).get(
-        (account.pk, contact_id)
-    )
+    return of_chat(Handover.objects, account, contact_id, "since")
 
 
 def take_chat(account, contact_id) -> None:

@@ -12,6 +12,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
+from .chat_state import of_chat, per_chat
 from .models import BotFailure
 from .signals import bot_failure_changed
 from .tasks import retry_bot_reply
@@ -103,17 +104,11 @@ def save_failure(msg, retry: bool) -> None:
 
 def failed_ats(chats) -> dict:
     """Since when the bot could not answer each client of the chats, as {(account, client): date}."""
-    rows = BotFailure.objects.filter(
-        account_id__in={chat["account"]["id"] for chat in chats},
-        contact_id__in={chat["contact_id"] for chat in chats},
-    )
-    return {(row.account_id, row.contact_id): row.failed_at for row in rows}
+    return per_chat(BotFailure.objects, chats, "failed_at")
 
 
 def failed_at(account, contact_id):
-    return failed_ats([{"account": {"id": account.pk}, "contact_id": contact_id}]).get(
-        (account.pk, contact_id)
-    )
+    return of_chat(BotFailure.objects, account, contact_id, "failed_at")
 
 
 def clear_failure(account_id, contact_id) -> None:

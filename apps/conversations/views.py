@@ -31,6 +31,7 @@ from wanps.messaging.models import Conversation, Message
 from wanps.whatsapp.client import WhatsAppError, list_templates
 
 from apps.channels.abuse import limited_until, limited_untils
+from apps.channels.chat_state import per_chat
 from apps.channels.failures import failed_at, failed_ats
 from apps.channels.handover import take_chat, waiting_since, waiting_sinces
 from apps.channels.models import ChannelAccount, ClientStrikes
@@ -129,12 +130,8 @@ def mark_files(messages, readable):
 
 def blocked_untils(chats):
     """Until when the bot does not answer each client of the chats (only the blocks still on)."""
-    rows = ClientStrikes.objects.filter(
-        account_id__in={chat["account"]["id"] for chat in chats},
-        contact_id__in={chat["contact_id"] for chat in chats},
-        blocked_until__gt=timezone.now(),
-    )
-    return {(row.account_id, row.contact_id): row.blocked_until for row in rows}
+    blocks_on = ClientStrikes.objects.filter(blocked_until__gt=timezone.now())
+    return per_chat(blocks_on, chats, "blocked_until")
 
 
 class ConversationListView(APIView):
