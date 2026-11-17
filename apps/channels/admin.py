@@ -12,12 +12,14 @@ from django.db import transaction
 from django.db.models import Sum
 from wanps.messaging.models import Account
 
+from apps.core.admin import SoftDeleteAdminMixin
+
 from .models import AIUsage, ChannelAccount, SharedMetaApp, meta_app_for
 from .services import disconnect
 
 
 @admin.register(SharedMetaApp)
-class SharedMetaAppAdmin(admin.ModelAdmin):
+class SharedMetaAppAdmin(SoftDeleteAdminMixin, admin.ModelAdmin):
     list_display = ["app", "created_at"]
 
 

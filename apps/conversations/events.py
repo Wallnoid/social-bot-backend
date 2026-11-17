@@ -29,7 +29,7 @@ from apps.channels.signals import (
     handover_changed,
     tenant_daily_limit_reached,
 )
-from apps.tenants.signals import business_suspended
+from apps.tenants.signals import business_deleted, business_suspended
 
 from .realtime import group_of
 from .serializers import ChatMessageSerializer
@@ -220,20 +220,23 @@ def failure_changed(sender, account, contact_id, failed_at, **kwargs):
     )
 
 
-@receiver(business_suspended)
-@never_raise
-def close_connections(sender, tenant, **kwargs):
-    """A suspended business: the open connections of its members are closed, once it is saved."""
+def close_group(tenant, event_type):
+    """Close the open connections of the members of a business, once the change is saved."""
 
     def send():
         try:
-            async_to_sync(get_channel_layer().group_send)(
-                group_of(tenant.pk), {"type": "business.suspended"}
-            )
+            async_to_sync(get_channel_layer().group_send)(group_of(tenant.pk), {"type": event_type})
         except Exception:
-            logger.exception("Could not close the connections of a suspended business")
+            logger.exception("Could not close the connections of a business (%s)", event_type)
 
     transaction.on_commit(send)
+
+
+@receiver(business_suspended)
+@never_raise
+def close_connections(sender, tenant, **kwargs):
+    """A suspended business: the open connections of its members are closed."""
+    close_group(tenant, "business.suspended")
 
 
 @receiver(handover_changed)
@@ -253,3 +256,10 @@ def handover_changed_event(sender, account, contact_id, since, **kwargs):
             "waiting_for_person_since": since,
         },
     )
+
+
+@receiver(business_deleted)
+@never_raise
+def close_connections_of_a_deleted_business(sender, tenant, **kwargs):
+    """A deleted business: the open connections of its members are closed."""
+    close_group(tenant, "business.deleted")

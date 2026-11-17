@@ -13,10 +13,11 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from apps.accounts.emails import send_set_password_email
+from apps.core.admin import DeletionStateFilter, SoftDeleteAdminMixin
 
 from .emails import send_invitation_email
 from .models import Invitation, Membership, Tenant
-from .signals import business_suspended
+from .signals import business_deleted, business_suspended
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -111,15 +112,43 @@ class InvitationInline(admin.TabularInline):
 
 
 @admin.register(Tenant)
-class TenantAdmin(admin.ModelAdmin):
-    list_display = ["name", "suspended_at", "created_at"]
+class TenantAdmin(SoftDeleteAdminMixin, admin.ModelAdmin):
+    list_display = ["name", "suspended_at", "is_deleted", "created_at"]
+    list_filter = [DeletionStateFilter]
     search_fields = ["name"]
     inlines = [MembershipInline, InvitationInline]
-    actions = ["suspend", "reactivate"]
+    actions = ["suspend", "reactivate", "restore"]
+
+    def get_queryset(self, request):
+        # The deleted ones too, so they can be found and restored; the list shows the active
+        # ones unless its filter asks for more
+        return Tenant.all_objects.all()
+
+    def delete_queryset(self, request, queryset):
+        # The rows are loaded once; one deleted before keeps the date it was really deleted
+        for tenant in queryset.filter(is_deleted=False):
+            self.delete_model(request, tenant)
+
+    def delete_model(self, request, obj):
+        if obj.is_deleted:
+            return
+        obj.delete()
+        business_deleted.send(sender=Tenant, tenant=obj)
+
+    @admin.action(
+        description="Restore the selected deleted businesses",
+        # Undoing a deletion needs the same permission as deleting
+        permissions=["delete"],
+    )
+    def restore(self, request, queryset):
+        to_restore = list(queryset.filter(is_deleted=True))
+        for tenant in to_restore:
+            tenant.restore()
+        self.message_user(request, f"{len(to_restore)} business(es) restored.")
 
     @admin.action(description="Suspend the selected businesses (no access and no bot)")
     def suspend(self, request, queryset):
-        to_suspend = list(queryset.filter(suspended_at__isnull=True))
+        to_suspend = list(queryset.filter(is_deleted=False, suspended_at__isnull=True))
         Tenant.objects.filter(pk__in=[tenant.pk for tenant in to_suspend]).update(
             suspended_at=timezone.now()
         )
@@ -129,7 +158,9 @@ class TenantAdmin(admin.ModelAdmin):
 
     @admin.action(description="Reactivate the selected businesses")
     def reactivate(self, request, queryset):
-        count = queryset.filter(suspended_at__isnull=False).update(suspended_at=None)
+        count = queryset.filter(is_deleted=False, suspended_at__isnull=False).update(
+            suspended_at=None
+        )
         self.message_user(request, f"{count} business(es) reactivated.")
 
     def get_form(self, request, obj=None, **kwargs):
@@ -153,7 +184,8 @@ class TenantAdmin(admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         # Suspending and reactivating go through the actions, so the date is always the real one
-        return ["suspended_at"] if obj is not None else []
+        # The deletion goes through deleting and the Restore action, so its state is read only
+        return ["suspended_at", "is_deleted", "deleted_at"] if obj is not None else []
 
     def get_inline_instances(self, request, obj=None):
         if obj is None:

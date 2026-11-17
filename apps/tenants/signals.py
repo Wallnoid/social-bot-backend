@@ -6,3 +6,6 @@ from django.dispatch import Signal
 
 # The Social Bot team suspended a business. Argument: tenant.
 business_suspended = Signal()
+
+# The Social Bot team deleted a business (a soft delete). Argument: tenant.
+business_deleted = Signal()

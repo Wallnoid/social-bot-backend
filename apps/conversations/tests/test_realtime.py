@@ -976,3 +976,50 @@ def test_the_handover_never_reaches_another_business(tenant, meta_app):
     ours, rival_saw_nothing = async_to_sync(scenario)()
     assert "handover.changed" in [event["type"] for event in ours]
     assert rival_saw_nothing is True
+
+
+def test_deleting_a_business_closes_its_open_connections(tenant):
+    from django.contrib.auth import get_user_model
+    from django.test import Client
+    from django.urls import reverse
+
+    member = add_agent(tenant)
+    staff = Client()
+    staff.force_login(
+        get_user_model().objects.create_superuser(
+            email="staff@example.com", password="staffpass123", first_name="S", last_name="U"
+        )
+    )
+
+    async def scenario():
+        ours, _ = await connect_as(member)
+        await sync_to_async(staff.post)(
+            reverse("admin:tenants_tenant_changelist"),
+            {"action": "delete_selected", "_selected_action": [str(tenant.pk)], "post": "yes"},
+        )
+        return await ours.app.receive_output(timeout=2)
+
+    closed = async_to_sync(scenario)()
+    assert (closed["type"], closed["code"]) == ("websocket.close", 4404)
+
+
+@pytest.mark.parametrize("state, code", [("deleted", 4404), ("suspended", 4403)])
+def test_a_permit_of_a_business_that_is_now_deleted_or_suspended_closes_with_its_code(
+    tenant, state, code
+):
+    from django.utils import timezone
+
+    member = add_agent(tenant)
+    ticket = member.post(TICKET_URL).data["data"]["ticket"]
+    if state == "deleted":
+        tenant.delete()
+    else:
+        Tenant.objects.filter(pk=tenant.pk).update(suspended_at=timezone.now())
+
+    async def scenario():
+        connection = Connection(f"/ws/inbox/?ticket={ticket}")
+        await connection.app.send_input({"type": "websocket.connect"})
+        return await connection.app.receive_output(timeout=2)
+
+    closed = async_to_sync(scenario)()
+    assert (closed["type"], closed.get("code")) == ("websocket.close", code)
