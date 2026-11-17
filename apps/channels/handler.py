@@ -47,12 +47,36 @@ def query_value(value):
     return str(value)
 
 
+def tool_request(tool, arguments):
+    """
+    The headers and the query of the call of a tool, from the values given: the ones the tool
+    declares, checked. Raises ValueError when a required value is missing or has the wrong type.
+    The bot and the try of an admin both build their call here.
+    """
+    declared = {parameter["name"]: parameter["type"] for parameter in tool.parameters}
+    required = [parameter["name"] for parameter in tool.parameters if parameter["required"]]
+    missing = [name for name in required if arguments.get(name) in (None, "")]
+    if missing:
+        raise ValueError("Missing required value: " + ", ".join(missing))
+    values = {
+        name: value for name, value in arguments.items() if name in declared and value is not None
+    }
+    wrong = [name for name, value in values.items() if not TYPE_CHECKS[declared[name]](value)]
+    if wrong:
+        raise ValueError("Wrong type of value: " + ", ".join(wrong))
+    headers = {}
+    if tool.auth_type == ChannelTool.AuthType.BEARER:
+        headers["Authorization"] = f"Bearer {tool.auth_secret}"
+    elif tool.auth_type == ChannelTool.AuthType.HEADER:
+        headers[tool.auth_header] = tool.auth_secret
+    return headers, {name: query_value(value) for name, value in values.items()}
+
+
 def build_tool(tool):
     """
     The AI-facing tool of a ChannelTool: a GET to its address with the values the AI gives in the
     query and the key of the tool. Only the values the tool declares are sent.
     """
-    declared = {parameter["name"]: parameter["type"] for parameter in tool.parameters}
     required = [parameter["name"] for parameter in tool.parameters if parameter["required"]]
     schema = {
         "type": "object",
@@ -63,26 +87,10 @@ def build_tool(tool):
     }
     if required:
         schema["required"] = required
-    headers = {}
-    if tool.auth_type == ChannelTool.AuthType.BEARER:
-        headers["Authorization"] = f"Bearer {tool.auth_secret}"
-    elif tool.auth_type == ChannelTool.AuthType.HEADER:
-        headers[tool.auth_header] = tool.auth_secret
 
     # `account` is filled in by wanps-core with the account of the message, never by the AI
     def call(*, account, **arguments):
-        missing = [name for name in required if arguments.get(name) in (None, "")]
-        if missing:
-            raise ValueError("Missing required value: " + ", ".join(missing))
-        values = {
-            name: value
-            for name, value in arguments.items()
-            if name in declared and value is not None
-        }
-        wrong = [name for name, value in values.items() if not TYPE_CHECKS[declared[name]](value)]
-        if wrong:
-            raise ValueError("Wrong type of value: " + ", ".join(wrong))
-        params = {name: query_value(value) for name, value in values.items()}
+        headers, params = tool_request(tool, arguments)
         return safe_get(tool.url, account=account, tool=tool.name, headers=headers, params=params)
 
     return Tool(call, name=tool.name, description=tool.description, parameters_schema=schema)

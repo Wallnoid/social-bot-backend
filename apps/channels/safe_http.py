@@ -166,13 +166,18 @@ def safe_get(url, *, account, tool, headers=None, params=None):
     GET the endpoint of a tool and return the text of the answer, or raise a ToolCallError.
     Every call is recorded, also the ones that fail or are blocked.
     """
+    return safe_get_with_status(url, account=account, tool=tool, headers=headers, params=params)[0]
+
+
+def safe_get_with_status(url, *, account, tool, headers=None, params=None):
+    """What `safe_get` does, giving the HTTP status of the answer too: (text, status)."""
     started = time.perf_counter()
     status, http_status, host = "ok", None, ""
     with contextlib.suppress(ValueError):
         host = (urlsplit(url).hostname or "")[:255]
     try:
         text, http_status, host = fetch(url, headers, params)
-        return text
+        return text, http_status
     except ToolCallError as error:
         status, http_status = error.reason, error.http_status
         logger.warning("Tool call of account %s: %s (host %s)", account.pk, error.reason, host)

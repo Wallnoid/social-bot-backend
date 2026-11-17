@@ -41,3 +41,10 @@ class SustainedUserRateThrottle(UserRateThrottle):
 
     scope = "sustained_user"
     rate = "1000/hour"
+
+
+class ToolTryRateThrottle(UserRateThrottle):
+    """Tries of the tools of the bot: an admin tries a few, but nobody scans addresses with them."""
+
+    scope = "tool_try"
+    rate = "10/minute"

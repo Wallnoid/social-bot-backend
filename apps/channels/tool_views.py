@@ -2,6 +2,10 @@
 Views of the tools of the bot of an account, for the admins of the business.
 """
 
+import base64
+import json
+from urllib.parse import quote
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -10,10 +14,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.core.throttling import ToolTryRateThrottle
 from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
+from .handler import tool_request
 from .models import ChannelAccount, ChannelTool
-from .tool_serializers import MAX_TOOLS_PER_ACCOUNT, ChannelToolSerializer
+from .safe_http import ToolCallError, safe_get_with_status
+from .tool_serializers import MAX_TOOLS_PER_ACCOUNT, ChannelToolSerializer, TryToolSerializer
 
 AI_PROVIDER_WARNING = (
     "What the endpoint answers is sent to the AI provider so the bot can use it. Do not point a "
@@ -135,3 +142,96 @@ class ChannelToolDetailView(ToolsView):
             link = self.get_link(request, account_id, lock=True)
             self.get_tool(link, tool_id, lock=True).soft_delete()
         return Response({"success": True, "message": "Tool deleted."})
+
+
+TRY_BODY_LIMIT = 2000
+
+
+def key_forms(secret):
+    """How a key can come back in an answer: as it is, in JSON, in an address or in base64."""
+    forms = {
+        secret,
+        json.dumps(secret)[1:-1],
+        json.dumps(secret)[1:-1].replace("/", "\\/"),
+        quote(secret, safe=""),
+        base64.b64encode(secret.encode()).decode(),
+        base64.b64encode(f"Bearer {secret}".encode()).decode(),
+    }
+    # The longest first, so one that holds another is hidden whole
+    return sorted(forms, key=len, reverse=True)
+
+
+def hide_key(text, tool):
+    """An endpoint can send back what it received, the key included: it is never shown."""
+    if not tool.auth_secret:
+        return text
+    for form in key_forms(tool.auth_secret):
+        text = text.replace(form, "[hidden]")
+    return text
+
+
+class ChannelToolTryView(ToolsView):
+    """
+    POST /api/v1/channels/accounts/<id>/tools/<tool_id>/try/ → try a tool with sample values:
+    the call the bot would make runs now, and the answer is shown (the key never is).
+    """
+
+    # 10 tries a minute for each user: the try must not serve to scan addresses
+    throttle_classes = [ToolTryRateThrottle]
+
+    @extend_schema(
+        operation_id="v1_channels_accounts_tools_try",
+        request=TryToolSerializer,
+        responses={
+            200: inline_serializer(
+                "TryToolResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer(
+                        "TryToolResult",
+                        {
+                            "ok": serializers.BooleanField(),
+                            "http_status": serializers.IntegerField(allow_null=True),
+                            "body": serializers.CharField(allow_null=True),
+                            "truncated": serializers.BooleanField(),
+                            "error": serializers.CharField(allow_null=True),
+                        },
+                    ),
+                },
+            )
+        },
+    )
+    def post(self, request, account_id, tool_id):
+        link = self.get_link(request, account_id)
+        tool = self.get_tool(link, tool_id)
+        body = TryToolSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            headers, params = tool_request(tool, body.validated_data["values"])
+        except ValueError as error:
+            raise ValidationError({"values": [str(error)]}) from None
+        try:
+            text, http_status = safe_get_with_status(
+                tool.url, account=link.account, tool=tool.name, headers=headers, params=params
+            )
+        except ToolCallError as error:
+            # The reason is a code, safe to show: a failed try is an answer, not a failure of ours
+            result = {
+                "ok": False,
+                "http_status": error.http_status,
+                "body": None,
+                "truncated": False,
+                "error": error.reason,
+            }
+            return Response({"success": True, "data": result})
+        # An endpoint can send back what it received, the key included: it is never shown
+        text = hide_key(text, tool)
+        shown = text[:TRY_BODY_LIMIT]
+        result = {
+            "ok": True,
+            "http_status": http_status,
+            "body": shown,
+            "truncated": len(text) > TRY_BODY_LIMIT,
+            "error": None,
+        }
+        return Response({"success": True, "data": result})

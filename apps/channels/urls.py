@@ -4,7 +4,7 @@ URL configuration for the channels app.
 
 from django.urls import path
 
-from .tool_views import ChannelToolDetailView, ChannelToolListView
+from .tool_views import ChannelToolDetailView, ChannelToolListView, ChannelToolTryView
 from .views import ChannelAccountDetailView, ChannelAccountListView, MetaAppView
 
 app_name = "channels"
@@ -18,5 +18,10 @@ urlpatterns = [
         "accounts/<uuid:account_id>/tools/<uuid:tool_id>/",
         ChannelToolDetailView.as_view(),
         name="tool-detail",
+    ),
+    path(
+        "accounts/<uuid:account_id>/tools/<uuid:tool_id>/try/",
+        ChannelToolTryView.as_view(),
+        name="tool-try",
     ),
 ]

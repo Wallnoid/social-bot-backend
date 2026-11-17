@@ -162,3 +162,13 @@ class ChannelToolSerializer(serializers.ModelSerializer):
         if errors:
             raise serializers.ValidationError(errors)
         return attrs
+
+
+class TryToolSerializer(serializers.Serializer):
+    """The sample values to try a tool with: the ones its parameters declare."""
+
+    values = serializers.DictField(
+        required=False,
+        default=dict,
+        help_text="Value of each parameter of the tool, by name.",
+    )
