@@ -31,6 +31,7 @@ from apps.channels.signals import (
 )
 from apps.tenants.signals import business_deleted, business_suspended
 
+from .names import account_of
 from .realtime import group_of
 from .serializers import ChatMessageSerializer
 
@@ -42,10 +43,6 @@ def link_of(account_id):
     if account_id is None:
         return None
     return ChannelAccount.objects.filter(account_id=account_id).select_related("account").first()
-
-
-def account_of(link) -> dict:
-    return {"id": str(link.id), "name": link.account.name, "channel": link.account.channel}
 
 
 def publish(link, payload: dict) -> None:

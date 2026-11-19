@@ -39,7 +39,7 @@ from apps.channels.signals import client_block_changed, client_limit_changed
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
 
 from .files import open_message_file
-from .names import display_name
+from .names import account_of, display_name
 from .realtime import issue_ticket
 from .serializers import (
     BotStateSerializer,
@@ -103,11 +103,6 @@ def chat_scope(request, channel, account_id):
     """
     link = pick_link(business_links(request, channel), account_id)
     return link, TenantInbox([link.account])
-
-
-def account_of(link):
-    """How the inbox names an account: with the id the list of accounts shows."""
-    return {"id": link.id, "name": link.account.name, "channel": link.account.channel}
 
 
 def mark_files(messages, readable):
