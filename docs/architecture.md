@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: the repo holds the base template (`core`, `accounts`) plus `tenants`, `channels` and the read side of `conversations`. Everything marked **planned** does not exist yet; it records the agreed direction, not implemented code.
+> Status: the repo holds the base template (`core`, `accounts`) plus `tenants`, `channels`, `conversations` and the contact list of `crm`. Everything marked **planned** does not exist yet; it records the agreed direction, not implemented code.
 
 ## Overview
 ```
@@ -28,7 +28,7 @@ social-bot-backend (Django + DRF) ──── PostgreSQL
 | `apps.tenants` | Tenant (business), membership, roles, invitations | exists |
 | `apps.channels` | Connect, list, edit and disconnect a business's channel accounts; the link from each `wanps-core` account to its business | exists |
 | `apps.conversations` (inbox) | List chats and read messages, one inbox per channel, built on `wanps.inbox`. Reply as a person, pause/resume the bot and live updates are planned | partly exists |
-| contacts + pipeline (CRM) | Contacts (clients), pipeline stages, link to conversations | planned |
+| `apps.crm` (contacts + pipeline) | Contacts (clients), one per chat, created by themselves from the first message; the list exists. Contact file, editing, pipeline stages and merging are planned | partly exists |
 | appointments (calendar) | Appointments linked to contacts | planned |
 | notifications | Notify users of new messages, appointments and pipeline changes | planned |
 
