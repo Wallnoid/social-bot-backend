@@ -1,7 +1,11 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from wanps.inbox.services import serialize_message
+from wanps.messaging.models import Message
 
-from apps.conversations.names import display_name
+from apps.channels.serializers import CHANNEL_CHOICES
+from apps.conversations.names import account_of, display_name
+from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
 
 
 class ContactSerializer(serializers.Serializer):
@@ -16,7 +20,9 @@ class ContactSerializer(serializers.Serializer):
         read_only=True,
         help_text="The client on the channel: the phone on WhatsApp, the user id elsewhere.",
     )
-    channel = serializers.CharField(source="account.channel", read_only=True)
+    channel = serializers.ChoiceField(
+        choices=CHANNEL_CHOICES, source="account.channel", read_only=True
+    )
     last_contact_at = serializers.DateTimeField(
         read_only=True,
         help_text="When the latest message of the chat, from either side, was saved.",
@@ -26,6 +32,54 @@ class ContactSerializer(serializers.Serializer):
     def get_name(self, contact):
         # Shown, never saved: the same name the inbox shows
         return display_name(contact.account.channel, contact.name)
+
+
+class ContactConversationSerializer(serializers.Serializer):
+    account = InboxAccountSerializer()
+    channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
+    contact_id = serializers.CharField(help_text="With `account`, opens the chat in the inbox.")
+    connected = serializers.BooleanField(
+        help_text="False when the account was disconnected: the chat cannot be opened."
+    )
+    last_message = InboxMessageSerializer(allow_null=True)
+
+
+class ContactFileSerializer(ContactSerializer):
+    account = serializers.SerializerMethodField(
+        help_text="The channel account of the business the contact writes to."
+    )
+    first_contact_at = serializers.DateTimeField(
+        read_only=True, help_text="When the first message of the chat was saved."
+    )
+    conversations = serializers.SerializerMethodField(
+        help_text="The chats of the contact (one for now). Their messages are read in the inbox."
+    )
+
+    @extend_schema_field(InboxAccountSerializer())
+    def get_account(self, contact):
+        # As the inbox gives it: the id of the link to the business opens the chat
+        return InboxAccountSerializer(account_of(contact.account.channel_account)).data
+
+    @extend_schema_field(ContactConversationSerializer(many=True))
+    def get_conversations(self, contact):
+        last = (
+            # The chat the inbox opens: the account, its channel and the client
+            Message.objects.filter(
+                account_id=contact.account_id,
+                channel=contact.account.channel,
+                contact_id=contact.external_id,
+            )
+            .order_by("-id")
+            .first()
+        )
+        conversation = {
+            "account": self.get_account(contact),
+            "channel": contact.account.channel,
+            "contact_id": contact.external_id,
+            "connected": not contact.account.channel_account.is_deleted,
+            "last_message": serialize_message(last) if last else None,
+        }
+        return ContactConversationSerializer([conversation], many=True).data
 
 
 class ContactsQuerySerializer(serializers.Serializer):
