@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
+from apps.crm.models import Contact
 from apps.tenants.models import Membership, Tenant
 
 User = get_user_model()
@@ -185,6 +186,21 @@ class MessageBuilder:
         for message, (_, minutes_ago) in zip(created, self.pending, strict=True):
             message.created_at = self.now - timedelta(minutes=minutes_ago)
         Message.objects.bulk_update(created, ["created_at"])
+        # bulk_create sends no post_save, so each chat gets its contact here, as a message would
+        chats = {(message.account_id, message.contact_id) for message in created}
+        tenant_of = dict(
+            ChannelAccount.all_objects.filter(
+                account_id__in={account_id for account_id, _ in chats}
+            ).values_list("account_id", "tenant_id")
+        )
+        Contact.all_objects.bulk_create(
+            [
+                Contact(tenant_id=tenant_of[account_id], account_id=account_id, external_id=contact)
+                for account_id, contact in chats
+                if account_id in tenant_of
+            ],
+            ignore_conflicts=True,
+        )
 
 
 def short_chat(builder, account, contact, name, client_wrote_ago, last_answer, person=""):
@@ -348,6 +364,7 @@ def reset_demo():
     """Delete what the seeding created, and nothing else: all of it carries the demo prefix."""
     accounts = Account.objects.filter(external_id__in=DEMO_ACCOUNT_IDS)
     Message.objects.filter(account__in=accounts).delete()
+    Contact.all_objects.filter(account__in=accounts).delete()
     Conversation.objects.filter(account__in=accounts).delete()
     ChannelAccount.all_objects.filter(account__in=accounts).delete()
     accounts.delete()

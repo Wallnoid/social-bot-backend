@@ -15,6 +15,7 @@ from rest_framework.test import APIClient
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
+from apps.crm.models import Contact
 from apps.devtools import fake_meta
 from apps.tenants.models import Membership, Tenant
 
@@ -381,3 +382,41 @@ def test_the_people_who_answered_are_members_of_the_business_and_match_who_pause
         signed = by_hand.filter(account=conversation.account, contact_id=conversation.contact_id)
         assert signed.exists()
         assert {m.sent_by for m in signed} == {conversation.paused_by}
+
+
+def test_every_seeded_chat_has_its_contact(seed):
+    seed()
+
+    chats = set(
+        Message.objects.filter(external_id__startswith="demo-")
+        .values_list("account_id", "contact_id")
+        .distinct()
+    )
+    contacts = set(Contact.objects.values_list("account_id", "external_id"))
+    assert chats
+    assert contacts == chats
+
+
+def test_reset_deletes_the_seeded_contacts_and_keeps_the_real_ones(seed):
+    real_tenant = Tenant.objects.create(name="Real Clinic")
+    real_app = App.objects.create(name="Real app", app_secret="s", verify_token="v")
+    real_account = Account.objects.create(
+        channel="whatsapp", app=real_app, name="Real", external_id="5551234", access_token="t"
+    )
+    ChannelAccount.objects.create(tenant=real_tenant, account=real_account)
+    Message.objects.create(
+        channel="whatsapp",
+        account=real_account,
+        external_id="real-1",
+        contact_id="593990000000",
+        direction="in",
+        message_type="text",
+        text="Hola",
+    )
+    seed()
+    seeded = Contact.objects.count()
+
+    seed("--reset")
+
+    assert Contact.objects.count() == seeded
+    assert Contact.objects.filter(account=real_account, external_id="593990000000").exists()
