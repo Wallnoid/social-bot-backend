@@ -39,6 +39,7 @@ from apps.channels.signals import client_block_changed, client_limit_changed
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
 
 from .files import open_message_file
+from .names import display_name
 from .realtime import issue_ticket
 from .serializers import (
     BotStateSerializer,
@@ -186,7 +187,7 @@ class ConversationListView(APIView):
                 "waiting_for_person_since": waiting.get(
                     (chat["account"]["id"], chat["contact_id"])
                 ),
-                "contact_name": chat["contact_name"] or GENERIC_NAMES.get(channel, ""),
+                "contact_name": display_name(channel, chat["contact_name"]),
                 "account": account_of(by_account[chat["account"]["id"]]),
             }
             for chat in found["conversations"]
@@ -251,9 +252,6 @@ NOT_INLINE = ("image/svg+xml",)
 
 
 MEGABYTE = 1024 * 1024
-
-# What a chat shows while Meta has not given the name of the client (shown, never saved)
-GENERIC_NAMES = {"messenger": "Messenger user", "instagram": "Instagram user"}
 
 
 class MessageFileView(APIView):
