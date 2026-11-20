@@ -121,10 +121,9 @@ class ContactDetailView(generics.GenericAPIView):
     def patch(self, request, contact_id):
         edit = ContactEditSerializer(data=request.data, partial=True)
         edit.is_valid(raise_exception=True)
-        contact = self.file_of(contact_id)
-        for field, value in edit.validated_data.items():
-            setattr(contact, field, value)
-        contact.save(update_fields=[*edit.validated_data, "updated_at"])
+        # Looked up once the body is valid: an invalid edit does not run the query of the file
+        edit.instance = self.file_of(contact_id)
+        contact = edit.save()
         return Response({"success": True, "data": ContactFileSerializer(contact).data})
 
     def file_of(self, contact_id):

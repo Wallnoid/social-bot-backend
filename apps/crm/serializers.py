@@ -58,6 +58,13 @@ class ContactEditSerializer(serializers.ModelSerializer):
         # Stored in lowercase, as the emails of users
         return email.lower()
 
+    def update(self, contact, validated_data):
+        # Only the fields sent: the contact read with the file carries annotations
+        for field, value in validated_data.items():
+            setattr(contact, field, value)
+        contact.save(update_fields=[*validated_data, "updated_at"])
+        return contact
+
 
 class ContactConversationSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
