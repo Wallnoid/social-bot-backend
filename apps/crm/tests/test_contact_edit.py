@@ -176,3 +176,10 @@ def test_a_phone_without_digits_is_rejected(member, contact, phone):
     assert response.status_code == 400
     contact.refresh_from_db()
     assert contact.phone == ""
+
+
+def test_the_email_is_saved_in_lowercase(member, contact):
+    response = member.patch(file_url(contact), {"email": "Ana@Example.COM"}, format="json")
+
+    assert response.data["data"]["email"] == "ana@example.com"
+    assert member.get(file_url(contact)).data["data"]["email"] == "ana@example.com"

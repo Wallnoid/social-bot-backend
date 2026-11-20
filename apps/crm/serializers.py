@@ -54,6 +54,10 @@ class ContactEditSerializer(serializers.ModelSerializer):
         model = Contact
         fields = ["name", "phone", "email", "company"]
 
+    def validate_email(self, email):
+        # Stored in lowercase, as the emails of users
+        return email.lower()
+
 
 class ContactConversationSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
