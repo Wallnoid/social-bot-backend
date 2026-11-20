@@ -12,7 +12,7 @@ from wanps.messaging.models import Message
 from apps.channels.models import ChannelAccount
 from apps.tenants.models import Tenant
 
-from .models import DEFAULT_STAGES, Contact, Stage
+from .models import DEFAULT_STAGES, Contact, Stage, first_stages
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def message_saved(sender, instance, created, **kwargs):
                     "tenant_id": link.tenant_id,
                     # The first stage of the pipeline of the business, looked up only when
                     # the contact is created: get_or_create calls it then
-                    "stage": lambda: Stage.objects.filter(tenant_id=link.tenant_id).first(),
+                    "stage_id": lambda: first_stages([link.tenant_id]).get(link.tenant_id),
                 },
             )
     except Exception:

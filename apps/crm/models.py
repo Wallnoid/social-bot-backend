@@ -27,6 +27,15 @@ class Stage(BaseModel):
         return self.name
 
 
+def first_stages(tenant_ids):
+    """The first stage of the pipeline of each business, where its new contacts start."""
+    first = {}
+    stages = Stage.objects.filter(tenant_id__in=tenant_ids).order_by("-position")
+    for tenant_id, stage_id in stages.values_list("tenant_id", "pk"):
+        first[tenant_id] = stage_id
+    return first
+
+
 class Contact(BaseModel):
     """A client of a business, created by itself from the first message of a chat."""
 

@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
-from apps.crm.models import Contact, Stage
+from apps.crm.models import Contact, Stage, first_stages
 from apps.tenants.models import Membership, Tenant
 
 User = get_user_model()
@@ -194,9 +194,7 @@ class MessageBuilder:
             ).values_list("account_id", "tenant_id")
         )
         # In the first stage of the pipeline of their business, as a new contact starts
-        first_stage = {}
-        for stage in Stage.objects.filter(tenant_id__in=tenant_of.values()).order_by("-position"):
-            first_stage[stage.tenant_id] = stage.pk
+        first_stage = first_stages(tenant_of.values())
         Contact.all_objects.bulk_create(
             [
                 Contact(
