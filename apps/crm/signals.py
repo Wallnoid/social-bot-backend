@@ -10,8 +10,9 @@ from django.dispatch import receiver
 from wanps.messaging.models import Message
 
 from apps.channels.models import ChannelAccount
+from apps.tenants.models import Tenant
 
-from .models import Contact
+from .models import DEFAULT_STAGES, Contact, Stage
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,23 @@ def message_saved(sender, instance, created, **kwargs):
             Contact.all_objects.get_or_create(
                 account_id=instance.account_id,
                 external_id=instance.contact_id,
-                defaults={"tenant_id": link.tenant_id},
+                defaults={
+                    "tenant_id": link.tenant_id,
+                    # The first stage of the pipeline of the business, looked up only when
+                    # the contact is created: get_or_create calls it then
+                    "stage": lambda: Stage.objects.filter(tenant_id=link.tenant_id).first(),
+                },
             )
     except Exception:
         logger.exception("Could not create the contact of a chat")
+
+
+@receiver(post_save, sender=Tenant)
+def tenant_saved(sender, instance, created, raw=False, **kwargs):
+    # Every business starts with the default stages of the pipeline; one loaded from a fixture
+    # brings its own
+    if created and not raw:
+        Stage.objects.bulk_create(
+            Stage(tenant=instance, name=name, position=position)
+            for position, name in enumerate(DEFAULT_STAGES)
+        )

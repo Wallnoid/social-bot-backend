@@ -56,6 +56,8 @@ Summary of the most critical ones (full detail in the imported file below):
 - The Social Bot team suspends and reactivates a business with the actions of the Django admin (`suspended_at`): working in it answers 403 with the code `business_suspended`, its invitations are refused, its WebSockets are closed with the code 4403, and its bot does not answer; the profile still lists it with `suspended: true`.
 - A business admin sets up the Meta App of the business with `/api/v1/channels/meta-app/` (the app secret and the verify token are write-only; the answer gives the webhook URL to paste in Meta). The app shared by every business is still marked in the Django admin.
 - A contact's name written by the team is `custom_name` in the API (`Contact.name`); `name` is only for display (the team's, else the channel's), so edit forms are filled from `custom_name`.
+- Every business gets the default pipeline stages when it is created (`apps/crm/signals.py`), and every contact always has a stage: anything that creates contacts in bulk must set it.
+- Deploy with the web, Celery worker and Celery beat services stopped while `migrate` runs: a data step followed by a `NOT NULL` (as in `crm` 0006 and 0007) fails if old code writes rows in between.
 - Per-area rules live in `.claude/rules/`.
 
 ## Detailed documentation

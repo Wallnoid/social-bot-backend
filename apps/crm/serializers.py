@@ -7,7 +7,18 @@ from apps.channels.serializers import CHANNEL_CHOICES
 from apps.conversations.names import account_of, display_name
 from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
 
-from .models import Contact
+from .models import Contact, Stage
+
+
+class ContactStageSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class StageSerializer(ContactStageSerializer):
+    contacts = serializers.IntegerField(
+        source="contact_count", read_only=True, help_text="How many contacts it has."
+    )
 
 
 class ContactSerializer(serializers.Serializer):
@@ -30,6 +41,7 @@ class ContactSerializer(serializers.Serializer):
     channel = serializers.ChoiceField(
         choices=CHANNEL_CHOICES, source="account.channel", read_only=True
     )
+    stage = ContactStageSerializer(read_only=True, help_text="The stage of the pipeline.")
     phone = serializers.CharField(read_only=True)
     email = serializers.EmailField(read_only=True)
     company = serializers.CharField(read_only=True)
@@ -44,7 +56,15 @@ class ContactSerializer(serializers.Serializer):
         return display_name(contact.account.channel, contact.name or contact.channel_name)
 
 
+class StageOfBusinessField(serializers.PrimaryKeyRelatedField):
+    """A stage of the active business: one of another business is as one that does not exist."""
+
+    def get_queryset(self):
+        return Stage.objects.filter(tenant=self.context["request"].tenant)
+
+
 class ContactEditSerializer(serializers.ModelSerializer):
+    stage = StageOfBusinessField(required=False, help_text="Moves the contact to this stage.")
     # Free text, not E.164: digits, "+", spaces and dashes, with at least one digit
     phone = serializers.RegexField(
         r"^([0-9+\- ]*[0-9][0-9+\- ]*)?$", max_length=32, required=False, allow_blank=True
@@ -52,7 +72,7 @@ class ContactEditSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contact
-        fields = ["name", "phone", "email", "company"]
+        fields = ["name", "phone", "email", "company", "stage"]
 
     def validate_email(self, email):
         # Stored in lowercase, as the emails of users
@@ -117,3 +137,6 @@ class ContactFileSerializer(ContactSerializer):
 class ContactsQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
     offset = serializers.IntegerField(min_value=0, default=0)
+    stage = serializers.UUIDField(
+        required=False, help_text="Only the contacts of this stage: a column of the pipeline."
+    )

@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
-from apps.crm.models import Contact
+from apps.crm.models import Contact, Stage
 from apps.tenants.models import Membership, Tenant
 
 User = get_user_model()
@@ -193,9 +193,18 @@ class MessageBuilder:
                 account_id__in={account_id for account_id, _ in chats}
             ).values_list("account_id", "tenant_id")
         )
+        # In the first stage of the pipeline of their business, as a new contact starts
+        first_stage = {}
+        for stage in Stage.objects.filter(tenant_id__in=tenant_of.values()).order_by("-position"):
+            first_stage[stage.tenant_id] = stage.pk
         Contact.all_objects.bulk_create(
             [
-                Contact(tenant_id=tenant_of[account_id], account_id=account_id, external_id=contact)
+                Contact(
+                    tenant_id=tenant_of[account_id],
+                    account_id=account_id,
+                    external_id=contact,
+                    stage_id=first_stage[tenant_of[account_id]],
+                )
                 for account_id, contact in chats
                 if account_id in tenant_of
             ],
@@ -368,6 +377,7 @@ def reset_demo():
     Conversation.objects.filter(account__in=accounts).delete()
     ChannelAccount.all_objects.filter(account__in=accounts).delete()
     accounts.delete()
+    Stage.all_objects.filter(tenant__in=demo_tenants()).delete()
     demo_tenants().delete()  # also their memberships
     App.objects.filter(name=APP_NAME).delete()
     User.objects.filter(email__in=DEMO_EMAILS).delete()

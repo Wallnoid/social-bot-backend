@@ -16,6 +16,7 @@ from apps.channels.services import disconnect
 from apps.channels.tests.test_manage_accounts import add_account
 from apps.conversations.tests.test_inbox import add_message, inbox_url
 from apps.crm.models import Contact
+from apps.crm.tests.migrations import migrate_to
 from apps.tenants.models import Membership, Tenant
 from apps.tenants.tests.helpers import add_member, client_for
 
@@ -93,39 +94,62 @@ def test_a_failure_creating_the_contact_does_not_stop_the_message_from_being_sav
     assert Message.objects.filter(contact_id="593990000001").count() == 1
 
 
-def load_the_contacts_of_existing_chats():
+@pytest.fixture
+def before_the_pipeline(transactional_db):
+    """The database as the data step of migration 0002 found it: contacts had no stage yet."""
+    yield migrate_to(("crm", "0005_contact_stage"))
+    migrate_to()
+
+
+def load_the_contacts_of_existing_chats(apps):
     """Run the data step of the migration that gives a contact to every chat that already exists."""
     from importlib import import_module
-
-    from django.apps import apps
 
     import_module("apps.crm.migrations.0002_contacts_of_existing_chats").create_contacts(apps, None)
 
 
-def test_the_chats_that_existed_before_the_crm_get_their_contact(tenant, meta_app, member):
+def test_the_chats_that_existed_before_the_crm_get_their_contact(
+    before_the_pipeline, tenant, meta_app, member
+):
     link = add_account(tenant, meta_app, "111")
     add_message(link, "593990000001", "Hola", contact_name="Ana")
     add_message(link, "593990000002", "Buenas", contact_name="Luis")
     Contact.objects.all().delete()  # as if the chats were there before the CRM
-    assert listed_contacts(member) == []
 
-    load_the_contacts_of_existing_chats()
+    load_the_contacts_of_existing_chats(before_the_pipeline)
+    migrate_to()
 
     assert sorted(contact["name"] for contact in listed_contacts(member)) == ["Ana", "Luis"]
 
 
 def test_loading_the_existing_chats_does_not_duplicate_the_contacts_that_already_exist(
-    tenant, meta_app, member
+    before_the_pipeline, tenant, meta_app, member
 ):
     link = add_account(tenant, meta_app, "111")
     add_message(link, "593990000001", "Hola", contact_name="Ana")
     add_message(link, "593990000002", "Buenas", contact_name="Luis")
     Contact.objects.filter(external_id="593990000002").delete()
 
-    load_the_contacts_of_existing_chats()
-    load_the_contacts_of_existing_chats()
+    load_the_contacts_of_existing_chats(before_the_pipeline)
+    load_the_contacts_of_existing_chats(before_the_pipeline)
+    migrate_to()
 
     assert sorted(contact["name"] for contact in listed_contacts(member)) == ["Ana", "Luis"]
+
+
+def test_loading_the_existing_chats_survives_a_contact_created_meanwhile(
+    before_the_pipeline, tenant, meta_app, member
+):
+    link = add_account(tenant, meta_app, "111")
+    add_message(link, "593990000001", "Hola", contact_name="Ana")
+    historical_contact = before_the_pipeline.get_model("crm", "Contact")
+
+    # The contact was created by a new message after the data step looked at the existing ones
+    with mock.patch.object(historical_contact._base_manager, "values_list", return_value=[]):
+        load_the_contacts_of_existing_chats(before_the_pipeline)
+    migrate_to()
+
+    assert [contact["name"] for contact in listed_contacts(member)] == ["Ana"]
 
 
 @pytest.mark.parametrize("role", Membership.Role.values)
@@ -243,17 +267,6 @@ def test_a_failure_finding_the_business_of_the_account_does_not_stop_the_message
         add_message(link, "593990000001", "Hola")
 
     assert Message.objects.filter(contact_id="593990000001").count() == 1
-
-
-def test_loading_the_existing_chats_survives_a_contact_created_meanwhile(tenant, meta_app, member):
-    link = add_account(tenant, meta_app, "111")
-    add_message(link, "593990000001", "Hola", contact_name="Ana")
-
-    # The contact was created by a new message after the data step looked at the existing ones
-    with mock.patch.object(Contact._base_manager, "values_list", return_value=[]):
-        load_the_contacts_of_existing_chats()
-
-    assert [contact["name"] for contact in listed_contacts(member)] == ["Ana"]
 
 
 def test_a_new_message_of_a_deleted_contact_logs_no_error(tenant, meta_app, member, caplog):

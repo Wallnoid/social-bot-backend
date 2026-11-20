@@ -2,7 +2,7 @@
 Views for the crm app.
 """
 
-from django.db.models import F, OuterRef, Subquery
+from django.db.models import Count, F, OuterRef, Q, Subquery
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers
 from rest_framework.exceptions import NotFound
@@ -12,12 +12,13 @@ from wanps.messaging.models import Message
 
 from apps.tenants.permissions import HasActiveTenant
 
-from .models import Contact
+from .models import Contact, Stage
 from .serializers import (
     ContactEditSerializer,
     ContactFileSerializer,
     ContactSerializer,
     ContactsQuerySerializer,
+    StageSerializer,
 )
 
 
@@ -37,7 +38,7 @@ def contacts_of(tenant):
     chat = chat_of_contact()
     return (
         Contact.objects.filter(tenant=tenant)
-        .select_related("account")
+        .select_related("account", "stage")
         .annotate(
             channel_name=Subquery(
                 chat.filter(direction=Message.DIRECTION_IN)
@@ -80,6 +81,8 @@ class ContactListView(generics.GenericAPIView):
         query.is_valid(raise_exception=True)
         limit, offset = query.validated_data["limit"], query.validated_data["offset"]
         contacts = contacts_of(request.tenant)
+        if "stage" in query.validated_data:
+            contacts = contacts.filter(stage_id=query.validated_data["stage"])
         # The id breaks the ties, so a page never repeats or skips a contact
         contacts = contacts.order_by(F("last_contact_at").desc(nulls_last=True), "id")
         page = list(contacts[offset : offset + limit + 1])
@@ -119,7 +122,7 @@ class ContactDetailView(generics.GenericAPIView):
         },
     )
     def patch(self, request, contact_id):
-        edit = ContactEditSerializer(data=request.data, partial=True)
+        edit = ContactEditSerializer(data=request.data, partial=True, context={"request": request})
         edit.is_valid(raise_exception=True)
         # Looked up once the body is valid: an invalid edit does not run the query of the file
         edit.instance = self.file_of(contact_id)
@@ -140,3 +143,33 @@ class ContactDetailView(generics.GenericAPIView):
         if contact is None:
             raise NotFound("Contact not found.")
         return contact
+
+
+class StageListView(generics.GenericAPIView):
+    """GET /api/v1/crm/stages/ → the stages of the pipeline of the active business, in order."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = StageSerializer
+
+    @extend_schema(
+        operation_id="v1_crm_stages_list",
+        responses={
+            200: inline_serializer(
+                "StageListResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer("StageList", {"stages": StageSerializer(many=True)}),
+                },
+            )
+        },
+    )
+    def get(self, request):
+        stages = (
+            Stage.objects.filter(tenant=request.tenant)
+            .annotate(contact_count=Count("contacts", filter=Q(contacts__is_deleted=False)))
+            # A query that counts does not take the order of the model
+            .order_by("position")
+        )
+        return Response(
+            {"success": True, "data": {"stages": StageSerializer(stages, many=True).data}}
+        )

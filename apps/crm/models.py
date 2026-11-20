@@ -9,6 +9,23 @@ from django.db import models
 
 from apps.core.models import BaseModel
 
+# The stages every business starts with, in order; the first one is where new contacts start
+DEFAULT_STAGES = ["Nuevo", "En conversación", "Interesado", "Cliente", "Perdido"]
+
+
+class Stage(BaseModel):
+    """A stage of the pipeline of a business."""
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="stages")
+    name = models.CharField(max_length=100)
+    position = models.PositiveIntegerField(help_text="The order of the stage in the pipeline.")
+
+    class Meta(BaseModel.Meta):
+        ordering = ["position"]
+
+    def __str__(self):
+        return self.name
+
 
 class Contact(BaseModel):
     """A client of a business, created by itself from the first message of a chat."""
@@ -22,6 +39,7 @@ class Contact(BaseModel):
     external_id = models.CharField(
         max_length=64, help_text="The client on the channel of the account."
     )
+    stage = models.ForeignKey(Stage, on_delete=models.PROTECT, related_name="contacts")
     # Written by the team; the name the channel gives is read from the chat, never saved here
     name = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=32, blank=True)
