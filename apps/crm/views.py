@@ -13,7 +13,12 @@ from wanps.messaging.models import Message
 from apps.tenants.permissions import HasActiveTenant
 
 from .models import Contact
-from .serializers import ContactFileSerializer, ContactSerializer, ContactsQuerySerializer
+from .serializers import (
+    ContactEditSerializer,
+    ContactFileSerializer,
+    ContactSerializer,
+    ContactsQuerySerializer,
+)
 
 
 def chat_of_contact():
@@ -34,7 +39,7 @@ def contacts_of(tenant):
         Contact.objects.filter(tenant=tenant)
         .select_related("account")
         .annotate(
-            name=Subquery(
+            channel_name=Subquery(
                 chat.filter(direction=Message.DIRECTION_IN)
                 .order_by("-id")
                 .values("contact_name")[:1]
@@ -100,8 +105,31 @@ class ContactDetailView(generics.GenericAPIView):
         }
     )
     def get(self, request, contact_id):
+        return Response(
+            {"success": True, "data": ContactFileSerializer(self.file_of(contact_id)).data}
+        )
+
+    @extend_schema(
+        request=ContactEditSerializer,
+        responses={
+            200: inline_serializer(
+                "ContactFileUpdateResponse",
+                {"success": serializers.BooleanField(), "data": ContactFileSerializer()},
+            )
+        },
+    )
+    def patch(self, request, contact_id):
+        edit = ContactEditSerializer(data=request.data, partial=True)
+        edit.is_valid(raise_exception=True)
+        contact = self.file_of(contact_id)
+        for field, value in edit.validated_data.items():
+            setattr(contact, field, value)
+        contact.save(update_fields=[*edit.validated_data, "updated_at"])
+        return Response({"success": True, "data": ContactFileSerializer(contact).data})
+
+    def file_of(self, contact_id):
         contact = (
-            contacts_of(request.tenant)
+            contacts_of(self.request.tenant)
             .select_related("account__channel_account")
             .annotate(
                 first_contact_at=Subquery(chat_of_contact().order_by("id").values("created_at")[:1])
@@ -112,4 +140,4 @@ class ContactDetailView(generics.GenericAPIView):
         )
         if contact is None:
             raise NotFound("Contact not found.")
-        return Response({"success": True, "data": ContactFileSerializer(contact).data})
+        return contact

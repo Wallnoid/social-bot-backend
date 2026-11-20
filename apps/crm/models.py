@@ -22,6 +22,11 @@ class Contact(BaseModel):
     external_id = models.CharField(
         max_length=64, help_text="The client on the channel of the account."
     )
+    # Written by the team; the name the channel gives is read from the chat, never saved here
+    name = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=32, blank=True)
+    email = models.EmailField(blank=True)
+    company = models.CharField(max_length=255, blank=True)
 
     class Meta(BaseModel.Meta):
         constraints = [

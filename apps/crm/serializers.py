@@ -7,13 +7,20 @@ from apps.channels.serializers import CHANNEL_CHOICES
 from apps.conversations.names import account_of, display_name
 from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
 
+from .models import Contact
+
 
 class ContactSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     name = serializers.SerializerMethodField(
-        help_text="The name the channel gave for the client. While Meta has not given it, "
-        "Messenger shows 'Messenger user' and Instagram 'Instagram user'; on WhatsApp it stays "
-        "empty (show `contact_id`, the phone)."
+        help_text="The name to show: the one the team wrote (`custom_name`), else the one the "
+        "channel gave. While Meta has not given it, Messenger shows 'Messenger user' and "
+        "Instagram 'Instagram user'; on WhatsApp it stays empty (show `contact_id`, the phone)."
+    )
+    custom_name = serializers.CharField(
+        source="name",
+        read_only=True,
+        help_text="The name the team wrote, empty if none: fill the edit form with this one.",
     )
     contact_id = serializers.CharField(
         source="external_id",
@@ -23,6 +30,9 @@ class ContactSerializer(serializers.Serializer):
     channel = serializers.ChoiceField(
         choices=CHANNEL_CHOICES, source="account.channel", read_only=True
     )
+    phone = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    company = serializers.CharField(read_only=True)
     last_contact_at = serializers.DateTimeField(
         read_only=True,
         help_text="When the latest message of the chat, from either side, was saved.",
@@ -30,8 +40,19 @@ class ContactSerializer(serializers.Serializer):
 
     @extend_schema_field(serializers.CharField())
     def get_name(self, contact):
-        # Shown, never saved: the same name the inbox shows
-        return display_name(contact.account.channel, contact.name)
+        # The name the team wrote, else the one the channel gives (shown, never saved)
+        return display_name(contact.account.channel, contact.name or contact.channel_name)
+
+
+class ContactEditSerializer(serializers.ModelSerializer):
+    # Free text, not E.164: digits, "+", spaces and dashes, with at least one digit
+    phone = serializers.RegexField(
+        r"^([0-9+\- ]*[0-9][0-9+\- ]*)?$", max_length=32, required=False, allow_blank=True
+    )
+
+    class Meta:
+        model = Contact
+        fields = ["name", "phone", "email", "company"]
 
 
 class ContactConversationSerializer(serializers.Serializer):
