@@ -36,6 +36,7 @@ from apps.channels.failures import failed_at, failed_ats
 from apps.channels.handover import take_chat, waiting_since, waiting_sinces
 from apps.channels.models import ChannelAccount, ClientStrikes
 from apps.channels.signals import client_block_changed, client_limit_changed
+from apps.crm.models import Contact
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
 
 from .files import open_message_file
@@ -103,6 +104,18 @@ def chat_scope(request, channel, account_id):
     """
     link = pick_link(business_links(request, channel), account_id)
     return link, TenantInbox([link.account])
+
+
+def contact_of_chat(tenant, account_id, contact_id):
+    """The contact of the CRM of a chat, with its stage, or None if it has none."""
+    contact = (
+        Contact.objects.select_related("stage")
+        .filter(tenant=tenant, account_id=account_id, external_id=contact_id)
+        .first()
+    )
+    if contact is None:
+        return None
+    return {"id": contact.pk, "stage": {"id": contact.stage_id, "name": contact.stage.name}}
 
 
 def mark_files(messages, readable):
@@ -232,6 +245,7 @@ class MessageListView(APIView):
             {
                 **found,
                 "account": account_of(link),
+                "contact": contact_of_chat(request.tenant, link.account_id, contact_id),
                 "bot_blocked_until": blocked_until,
                 "bot_limited_until": limited_until(link.account, contact_id),
                 "bot_failed_at": failed_at(link.account, contact_id),

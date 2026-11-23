@@ -3,6 +3,7 @@ What the inbox returns: a stable shape for the frontend, without the internal id
 the 0.3 duplicate names that `wanps.inbox` also includes.
 """
 
+from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers
 from wanps.messaging.attachments import PAGE_FILE_KINDS, WHATSAPP_FILE_KINDS
 from wanps.messaging.models import Message
@@ -120,10 +121,22 @@ class ConversationSerializer(serializers.Serializer):
     )
 
 
+class ChatContactSerializer(serializers.Serializer):
+    id = serializers.UUIDField(help_text="Opens its file: `/api/v1/crm/contacts/<id>/`.")
+    stage = inline_serializer(
+        "ChatContactStage", {"id": serializers.UUIDField(), "name": serializers.CharField()}
+    )
+
+
 class ChatMessagesSerializer(serializers.Serializer):
     account = InboxAccountSerializer()
     channel = serializers.ChoiceField(choices=CHANNEL_CHOICES)
     contact_id = serializers.CharField()
+    contact = ChatContactSerializer(
+        allow_null=True,
+        help_text="The contact of the CRM this chat belongs to, to open its file and move its "
+        "stage (`PATCH /api/v1/crm/contacts/<id>/`). Empty when it has none.",
+    )
     window_open = serializers.BooleanField()
     bot_paused = serializers.BooleanField()
     bot_paused_until = serializers.DateTimeField(allow_null=True)
