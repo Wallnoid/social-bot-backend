@@ -8,12 +8,27 @@ from apps.channels.serializers import CHANNEL_CHOICES
 from apps.conversations.names import account_of, display_name
 from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
 
-from .models import Contact, Note, Stage, stage_was_deleted
+from .models import Contact, Note, Stage, Tag, stage_was_deleted
 
 
 class ContactStageSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(read_only=True)
+
+
+class TagSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
+class TagCountSerializer(TagSerializer):
+    contacts = serializers.IntegerField(
+        source="contact_count", read_only=True, help_text="How many contacts have it."
+    )
+
+
+class TagNameSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=Tag._meta.get_field("name").max_length)
 
 
 class StageSerializer(ContactStageSerializer):
@@ -69,6 +84,7 @@ class ContactSerializer(serializers.Serializer):
         choices=CHANNEL_CHOICES, source="account.channel", read_only=True
     )
     stage = ContactStageSerializer(read_only=True, help_text="The stage of the pipeline.")
+    tags = TagSerializer(many=True, read_only=True, help_text="The tags of the contact, by name.")
     phone = serializers.CharField(read_only=True)
     email = serializers.EmailField(read_only=True)
     company = serializers.CharField(read_only=True)

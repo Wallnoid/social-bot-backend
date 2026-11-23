@@ -2,8 +2,9 @@
 Views for the crm app.
 """
 
-from django.db import transaction
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db import IntegrityError, transaction
+from django.db.models import Count, F, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Lower
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
@@ -15,7 +16,7 @@ from wanps.messaging.models import Message
 from apps.tenants.models import Membership
 from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
-from .models import Contact, Note, Stage
+from .models import Contact, Note, Stage, Tag
 from .serializers import (
     ContactEditSerializer,
     ContactFileSerializer,
@@ -27,6 +28,9 @@ from .serializers import (
     StageNameSerializer,
     StageOrderSerializer,
     StageSerializer,
+    TagCountSerializer,
+    TagNameSerializer,
+    TagSerializer,
 )
 
 
@@ -47,6 +51,7 @@ def contacts_of(tenant):
     return (
         Contact.objects.filter(tenant=tenant)
         .select_related("account", "stage")
+        .prefetch_related("tags")
         .annotate(
             channel_name=Subquery(
                 chat.filter(direction=Message.DIRECTION_IN)
@@ -490,3 +495,111 @@ class NoteDetailView(generics.GenericAPIView):
             raise PermissionDenied("Only the author of a note or an admin can delete it.")
         note.delete()
         return Response({"success": True, "message": "Note deleted."})
+
+
+def contact_of_business(request, contact_id):
+    """A contact of the active business, else 404."""
+    contact = Contact.objects.filter(tenant=request.tenant, pk=contact_id).first()
+    if contact is None:
+        raise NotFound("Contact not found.")
+    return contact
+
+
+def find_tag(tenant, name):
+    """The tag of a business with that name, whatever the capitalization."""
+    # Lower on both sides, in the database: the same comparison as the unique constraint
+    return (
+        Tag.objects.annotate(lowered=Lower("name"))
+        .filter(tenant=tenant, lowered=Lower(Value(name)))
+        .first()
+    )
+
+
+class ContactTagListView(generics.GenericAPIView):
+    """POST /api/v1/crm/contacts/<id>/tags/ → tag a contact by the name of the tag."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = TagNameSerializer
+
+    @extend_schema(
+        request=TagNameSerializer,
+        responses={
+            201: inline_serializer(
+                "ContactTaggedResponse",
+                {"success": serializers.BooleanField(), "data": TagSerializer()},
+            )
+        },
+    )
+    def post(self, request, contact_id):
+        body = TagNameSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        contact = contact_of_business(request, contact_id)
+        name = body.validated_data["name"]
+        tag = find_tag(request.tenant, name)
+        if tag is None:
+            try:
+                # A savepoint, so a clash does not break the transaction of the request
+                with transaction.atomic():
+                    tag = Tag.objects.create(tenant=request.tenant, name=name)
+            except IntegrityError:
+                # Another request created it between the lookup and here: use that one
+                tag = find_tag(request.tenant, name)
+        added = not contact.tags.filter(pk=tag.pk).exists()
+        contact.tags.add(tag)
+        return Response(
+            {"success": True, "data": TagSerializer(tag).data},
+            status=status.HTTP_201_CREATED if added else status.HTTP_200_OK,
+        )
+
+
+class ContactTagDetailView(generics.GenericAPIView):
+    """DELETE /api/v1/crm/contacts/<id>/tags/<tag>/ → take a tag off a contact."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = TagSerializer
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "ContactUntaggedResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def delete(self, request, contact_id, tag_id):
+        contact = contact_of_business(request, contact_id)
+        tag = Tag.objects.filter(tenant=request.tenant, pk=tag_id).first()
+        if tag is None:
+            raise NotFound("Tag not found.")
+        contact.tags.remove(tag)
+        return Response({"success": True, "message": "Tag removed."})
+
+
+class TagListView(generics.GenericAPIView):
+    """GET /api/v1/crm/tags/ → the tags of the active business, with how many contacts each has."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = TagCountSerializer
+
+    @extend_schema(
+        operation_id="v1_crm_tags_list",
+        responses={
+            200: inline_serializer(
+                "TagListResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer("TagList", {"tags": TagCountSerializer(many=True)}),
+                },
+            )
+        },
+    )
+    def get(self, request):
+        tags = (
+            Tag.objects.filter(tenant=request.tenant)
+            .annotate(contact_count=Count("contacts", filter=Q(contacts__is_deleted=False)))
+            # A query that counts does not take the order of the model
+            .order_by("name")
+        )
+        return Response(
+            {"success": True, "data": {"tags": TagCountSerializer(tags, many=True).data}}
+        )

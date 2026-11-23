@@ -7,6 +7,7 @@ account of the business sees them.
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Lower
 
 from apps.core.models import BaseModel
 
@@ -47,6 +48,28 @@ def stage_was_deleted(stage_id):
     return Stage.all_objects.filter(pk=stage_id, is_deleted=True).exists()
 
 
+class Tag(BaseModel):
+    """A label of a business to group its contacts (VIP, wholesaler...)."""
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="tags")
+    name = models.CharField(max_length=50)
+
+    class Meta(BaseModel.Meta):
+        ordering = ["name"]
+        constraints = [
+            # One tag per name in a business, whatever the capitalization
+            models.UniqueConstraint(
+                Lower("name"),
+                "tenant",
+                condition=models.Q(is_deleted=False),
+                name="crm_tag_one_per_name_in_business",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class Contact(BaseModel):
     """A client of a business, created by itself from the first message of a chat."""
 
@@ -60,6 +83,7 @@ class Contact(BaseModel):
         max_length=64, help_text="The client on the channel of the account."
     )
     stage = models.ForeignKey(Stage, on_delete=models.PROTECT, related_name="contacts")
+    tags = models.ManyToManyField(Tag, blank=True, related_name="contacts")
     # Written by the team; the name the channel gives is read from the chat, never saved here
     name = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=32, blank=True)
