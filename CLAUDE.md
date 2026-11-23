@@ -28,7 +28,7 @@ Channel connections (webhooks, sending, conversations, AI handlers) come from `w
 - `apps/channels/`: channel accounts of each business (a link to the `wanps-core` account) and the Meta Apps they connect to
 - `apps/conversations/`: the inbox, one per channel, read through `wanps.inbox`
 - `apps/devtools/`: development only (listed in the local settings, never in production): the `seed_demo` command and the fake Meta (`META_FAKE=true`)
-- `apps/crm/`: the contacts of each business, one per chat, created by themselves from the first message of the chat (the pipeline comes later)
+- `apps/crm/`: the contacts of each business, one per chat, created by themselves from the first message of the chat: their list, file and edit, and the stages of the pipeline
 - Planned apps (not created yet): appointments (calendar), notifications. Details in `docs/architecture.md`.
 
 ## Business rules
@@ -57,7 +57,7 @@ Summary of the most critical ones (full detail in the imported file below):
 - A business admin sets up the Meta App of the business with `/api/v1/channels/meta-app/` (the app secret and the verify token are write-only; the answer gives the webhook URL to paste in Meta). The app shared by every business is still marked in the Django admin.
 - A contact's name written by the team is `custom_name` in the API (`Contact.name`); `name` is only for display (the team's, else the channel's), so edit forms are filled from `custom_name`.
 - Every business gets the default pipeline stages when it is created (`apps/crm/signals.py`), and every contact always has a stage: anything that creates contacts in bulk must set it.
-- Every change to the stages of a business takes `lock_stages_of` (`apps/crm/views.py`), and anything that puts a contact in a stage checks `stage_was_deleted` (`apps/crm/models.py`) after saving.
+- Every change to the stages of a business takes `lock_stages_of` (`apps/crm/views.py`), and anything that puts a contact in a stage checks `stage_was_deleted` (`apps/crm/models.py`) after saving (except the `seed_demo` command, which only runs in development).
 - Deploy with the web, Celery worker and Celery beat services stopped while `migrate` runs: a data step followed by a `NOT NULL` (as in `crm` 0006 and 0007) fails if old code writes rows in between.
 - Per-area rules live in `.claude/rules/`.
 
