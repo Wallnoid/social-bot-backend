@@ -7,19 +7,22 @@ from django.db.models import Count, F, OuterRef, Q, Subquery
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from wanps.messaging.models import Message
 
+from apps.tenants.models import Membership
 from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
-from .models import Contact, Stage
+from .models import Contact, Note, Stage
 from .serializers import (
     ContactEditSerializer,
     ContactFileSerializer,
     ContactSerializer,
     ContactsQuerySerializer,
+    NoteSerializer,
+    PageQuerySerializer,
     StageDeleteQuerySerializer,
     StageNameSerializer,
     StageOrderSerializer,
@@ -356,3 +359,134 @@ class StageOrderView(generics.GenericAPIView):
                 "data": {"stages": StageSerializer(stages_of(request.tenant), many=True).data},
             }
         )
+
+
+class NoteListView(generics.GenericAPIView):
+    """
+    GET /api/v1/crm/contacts/<id>/notes/ → the notes of a contact of the active business.
+    POST /api/v1/crm/contacts/<id>/notes/ → write a note on it, as the member who asks.
+    """
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = NoteSerializer
+
+    def contact(self):
+        contact = Contact.objects.filter(
+            tenant=self.request.tenant, pk=self.kwargs["contact_id"]
+        ).first()
+        if contact is None:
+            raise NotFound("Contact not found.")
+        return contact
+
+    @extend_schema(
+        operation_id="v1_crm_notes_list",
+        parameters=[PageQuerySerializer],
+        responses={
+            200: inline_serializer(
+                "NoteListResponse",
+                {
+                    "success": serializers.BooleanField(),
+                    "data": inline_serializer(
+                        "NoteList",
+                        {
+                            "notes": NoteSerializer(many=True),
+                            "has_more": serializers.BooleanField(),
+                        },
+                    ),
+                },
+            )
+        },
+    )
+    def get(self, request, contact_id):
+        query = PageQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        limit, offset = query.validated_data["limit"], query.validated_data["offset"]
+        # The id breaks the ties, so a page never repeats or skips a note
+        notes = (
+            Note.objects.filter(contact=self.contact())
+            .select_related("author")
+            .order_by("-created_at", "id")
+        )
+        page = list(notes[offset : offset + limit + 1])
+        data = {
+            "notes": NoteSerializer(page[:limit], many=True).data,
+            "has_more": len(page) > limit,
+        }
+        return Response({"success": True, "data": data})
+
+    @extend_schema(
+        request=NoteSerializer,
+        responses={
+            201: inline_serializer(
+                "NoteCreatedResponse",
+                {"success": serializers.BooleanField(), "data": NoteSerializer()},
+            )
+        },
+    )
+    def post(self, request, contact_id):
+        body = NoteSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        note = body.save(contact=self.contact(), author=request.user)
+        return Response(
+            {"success": True, "data": NoteSerializer(note).data}, status=status.HTTP_201_CREATED
+        )
+
+
+class NoteDetailView(generics.GenericAPIView):
+    """
+    PATCH /api/v1/crm/contacts/<id>/notes/<note>/ → edit a note of a contact of the business.
+    DELETE /api/v1/crm/contacts/<id>/notes/<note>/ → delete it.
+    """
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = NoteSerializer
+
+    def note(self):
+        note = (
+            Note.objects.select_related("author")
+            .filter(
+                contact__tenant=self.request.tenant,
+                # A filter through a relation does not skip the deleted ones by itself
+                contact__is_deleted=False,
+                contact_id=self.kwargs["contact_id"],
+                pk=self.kwargs["note_id"],
+            )
+            .first()
+        )
+        if note is None:
+            raise NotFound("Note not found.")
+        return note
+
+    @extend_schema(
+        request=NoteSerializer,
+        responses={
+            200: inline_serializer(
+                "NoteUpdatedResponse",
+                {"success": serializers.BooleanField(), "data": NoteSerializer()},
+            )
+        },
+    )
+    def patch(self, request, contact_id, note_id):
+        note = self.note()
+        # Only its author rewrites a note, not even an admin: the words are the author's
+        if note.author_id != request.user.pk:
+            raise PermissionDenied("Only the author of a note can edit it.")
+        body = NoteSerializer(note, data=request.data)
+        body.is_valid(raise_exception=True)
+        note = body.save()
+        return Response({"success": True, "data": NoteSerializer(note).data})
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                "NoteDeletedResponse",
+                {"success": serializers.BooleanField(), "message": serializers.CharField()},
+            )
+        }
+    )
+    def delete(self, request, contact_id, note_id):
+        note = self.note()
+        if note.author_id != request.user.pk and request.membership.role != Membership.Role.ADMIN:
+            raise PermissionDenied("Only the author of a note or an admin can delete it.")
+        note.delete()
+        return Response({"success": True, "message": "Note deleted."})

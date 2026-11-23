@@ -114,7 +114,9 @@ def test_the_chats_that_existed_before_the_crm_get_their_contact(
     link = add_account(tenant, meta_app, "111")
     add_message(link, "593990000001", "Hola", contact_name="Ana")
     add_message(link, "593990000002", "Buenas", contact_name="Luis")
-    Contact.objects.all().delete()  # as if the chats were there before the CRM
+    # As if the chats were there before the CRM; through the contact of this point of the
+    # history, which has nothing hanging from it yet
+    before_the_pipeline.get_model("crm", "Contact")._base_manager.all().delete()
 
     load_the_contacts_of_existing_chats(before_the_pipeline)
     migrate_to()
@@ -128,7 +130,9 @@ def test_loading_the_existing_chats_does_not_duplicate_the_contacts_that_already
     link = add_account(tenant, meta_app, "111")
     add_message(link, "593990000001", "Hola", contact_name="Ana")
     add_message(link, "593990000002", "Buenas", contact_name="Luis")
-    Contact.objects.filter(external_id="593990000002").delete()
+    before_the_pipeline.get_model("crm", "Contact")._base_manager.filter(
+        external_id="593990000002"
+    ).delete()
 
     load_the_contacts_of_existing_chats(before_the_pipeline)
     load_the_contacts_of_existing_chats(before_the_pipeline)

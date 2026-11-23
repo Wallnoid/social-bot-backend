@@ -5,6 +5,7 @@ A contact is a client of a business. For now there is one per chat: the client a
 account of the business sees them.
 """
 
+from django.conf import settings
 from django.db import models
 
 from apps.core.models import BaseModel
@@ -74,3 +75,17 @@ class Contact(BaseModel):
 
     def __str__(self):
         return f"{self.account} — {self.external_id}"
+
+
+class Note(BaseModel):
+    """An internal note the team writes on a contact; the clients never see it."""
+
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name="notes")
+    # Who wrote it; a note outlives the account of its author
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    text = models.TextField()
+
+    def __str__(self):
+        return self.text[:50]

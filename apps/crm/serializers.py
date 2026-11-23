@@ -8,7 +8,7 @@ from apps.channels.serializers import CHANNEL_CHOICES
 from apps.conversations.names import account_of, display_name
 from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
 
-from .models import Contact, Stage, stage_was_deleted
+from .models import Contact, Note, Stage, stage_was_deleted
 
 
 class ContactStageSerializer(serializers.Serializer):
@@ -164,9 +164,27 @@ class ContactFileSerializer(ContactSerializer):
         return ContactConversationSerializer([conversation], many=True).data
 
 
-class ContactsQuerySerializer(serializers.Serializer):
+class PageQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
     offset = serializers.IntegerField(min_value=0, default=0)
+
+
+class ContactsQuerySerializer(PageQuerySerializer):
     stage = serializers.UUIDField(
         required=False, help_text="Only the contacts of this stage: a column of the pipeline."
     )
+
+
+class NoteAuthorSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(source="full_name", read_only=True)
+
+
+class NoteSerializer(serializers.ModelSerializer):
+    author = NoteAuthorSerializer(read_only=True, allow_null=True)
+
+    class Meta:
+        model = Note
+        fields = ["id", "text", "author", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {"text": {"max_length": 5000}}

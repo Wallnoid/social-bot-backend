@@ -7,6 +7,8 @@ from django.urls import path
 from .views import (
     ContactDetailView,
     ContactListView,
+    NoteDetailView,
+    NoteListView,
     StageDetailView,
     StageListView,
     StageOrderView,
@@ -17,6 +19,12 @@ app_name = "crm"
 urlpatterns = [
     path("contacts/", ContactListView.as_view(), name="contact-list"),
     path("contacts/<uuid:contact_id>/", ContactDetailView.as_view(), name="contact-detail"),
+    path("contacts/<uuid:contact_id>/notes/", NoteListView.as_view(), name="note-list"),
+    path(
+        "contacts/<uuid:contact_id>/notes/<uuid:note_id>/",
+        NoteDetailView.as_view(),
+        name="note-detail",
+    ),
     path("stages/", StageListView.as_view(), name="stage-list"),
     path("stages/order/", StageOrderView.as_view(), name="stage-order"),
     path("stages/<uuid:stage_id>/", StageDetailView.as_view(), name="stage-detail"),
