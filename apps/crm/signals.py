@@ -12,7 +12,7 @@ from wanps.messaging.models import Message
 from apps.channels.models import ChannelAccount
 from apps.tenants.models import Tenant
 
-from .models import DEFAULT_STAGES, Contact, Stage, first_stages
+from .models import DEFAULT_STAGES, Contact, Stage, first_stages, stage_was_deleted
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def message_saved(sender, instance, created, **kwargs):
                 return
             # Also the deleted ones: a chat keeps its one contact (whether to bring it back is
             # decided by the story that merges contacts)
-            Contact.all_objects.get_or_create(
+            contact, created = Contact.all_objects.get_or_create(
                 account_id=instance.account_id,
                 external_id=instance.contact_id,
                 defaults={
@@ -42,6 +42,10 @@ def message_saved(sender, instance, created, **kwargs):
                     "stage_id": lambda: first_stages([link.tenant_id]).get(link.tenant_id),
                 },
             )
+            if created and stage_was_deleted(contact.stage_id):
+                # The first stage was deleted while the contact was created: the new first one
+                contact.stage_id = first_stages([link.tenant_id])[link.tenant_id]
+                contact.save(update_fields=["stage", "updated_at"])
     except Exception:
         logger.exception("Could not create the contact of a chat")
 

@@ -1,3 +1,4 @@
+from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from wanps.inbox.services import serialize_message
@@ -7,7 +8,7 @@ from apps.channels.serializers import CHANNEL_CHOICES
 from apps.conversations.names import account_of, display_name
 from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
 
-from .models import Contact, Stage
+from .models import Contact, Stage, stage_was_deleted
 
 
 class ContactStageSerializer(serializers.Serializer):
@@ -18,6 +19,32 @@ class ContactStageSerializer(serializers.Serializer):
 class StageSerializer(ContactStageSerializer):
     contacts = serializers.IntegerField(
         source="contact_count", read_only=True, help_text="How many contacts it has."
+    )
+
+
+class StageNameSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100)
+
+    def validate_name(self, name):
+        # Two columns of the board with the same name cannot be told apart
+        others = Stage.objects.filter(tenant=self.context["request"].tenant, name__iexact=name)
+        if self.instance is not None:
+            others = others.exclude(pk=self.instance.pk)
+        if others.exists():
+            raise serializers.ValidationError("The business already has a stage with this name.")
+        return name
+
+
+class StageOrderSerializer(serializers.Serializer):
+    stages = serializers.ListField(
+        child=serializers.UUIDField(), help_text="Every stage of the business, in the new order."
+    )
+
+
+class StageDeleteQuerySerializer(serializers.Serializer):
+    move_to = serializers.UUIDField(
+        required=False,
+        help_text="The stage its contacts move to; required when the stage has contacts.",
     )
 
 
@@ -82,7 +109,10 @@ class ContactEditSerializer(serializers.ModelSerializer):
         # Only the fields sent: the contact read with the file carries annotations
         for field, value in validated_data.items():
             setattr(contact, field, value)
-        contact.save(update_fields=[*validated_data, "updated_at"])
+        with transaction.atomic():
+            contact.save(update_fields=[*validated_data, "updated_at"])
+            if "stage" in validated_data and stage_was_deleted(contact.stage_id):
+                raise serializers.ValidationError({"stage": ["This stage was just deleted."]})
         return contact
 
 

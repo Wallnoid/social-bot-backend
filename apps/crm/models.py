@@ -36,6 +36,16 @@ def first_stages(tenant_ids):
     return first
 
 
+def stage_was_deleted(stage_id):
+    """
+    Whether a stage was deleted while a contact was being put in it.
+
+    Called right after saving the contact, in the same transaction: the save waits for an admin
+    who is deleting the stage (deleting locks the stages), and once it is done this sees it.
+    """
+    return Stage.all_objects.filter(pk=stage_id, is_deleted=True).exists()
+
+
 class Contact(BaseModel):
     """A client of a business, created by itself from the first message of a chat."""
 
