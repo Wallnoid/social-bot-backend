@@ -16,7 +16,7 @@ from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
 from apps.crm.models import Contact
-from apps.devtools import fake_meta
+from apps.devtools import fake_meta, seeding
 from apps.tenants.models import Membership, Tenant
 
 User = get_user_model()
@@ -420,3 +420,26 @@ def test_reset_deletes_the_seeded_contacts_and_keeps_the_real_ones(seed):
 
     assert Contact.objects.count() == seeded
     assert Contact.objects.filter(account=real_account, external_id="593990000000").exists()
+
+
+def test_reset_also_deletes_the_contacts_of_a_demo_business_on_an_account_that_is_not_demo(seed):
+    seed()
+    demo = Tenant.objects.get(name=seeding.ACME)
+    app = App.objects.create(name="Another app", app_secret="s", verify_token="v")
+    account = Account.objects.create(
+        channel="whatsapp", app=app, name="Another", external_id="5559876", access_token="t"
+    )
+    ChannelAccount.objects.create(tenant=demo, account=account)
+    Message.objects.create(
+        channel="whatsapp",
+        account=account,
+        external_id="another-1",
+        contact_id="593990000000",
+        direction="in",
+        message_type="text",
+        text="Hola",
+    )
+
+    seed("--reset")
+
+    assert not Contact.all_objects.filter(account=account).exists()

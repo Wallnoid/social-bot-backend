@@ -9,6 +9,7 @@ import itertools
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
@@ -371,9 +372,15 @@ def reset_demo():
     """Delete what the seeding created, and nothing else: all of it carries the demo prefix."""
     accounts = Account.objects.filter(external_id__in=DEMO_ACCOUNT_IDS)
     Message.objects.filter(account__in=accounts).delete()
-    Contact.all_objects.filter(account__in=accounts).delete()
+    # Also the contacts of a demo business on an account the seeding did not create: they keep
+    # its stages and the business from being deleted
+    Contact.all_objects.filter(Q(account__in=accounts) | Q(tenant__in=demo_tenants())).delete()
     Conversation.objects.filter(account__in=accounts).delete()
-    ChannelAccount.all_objects.filter(account__in=accounts).delete()
+    # Also the links of a demo business to an account the seeding did not create (the account
+    # and its messages stay): they keep the business from being deleted
+    ChannelAccount.all_objects.filter(
+        Q(account__in=accounts) | Q(tenant__in=demo_tenants())
+    ).delete()
     accounts.delete()
     Stage.all_objects.filter(tenant__in=demo_tenants()).delete()
     demo_tenants().delete()  # also their memberships
