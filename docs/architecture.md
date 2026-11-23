@@ -28,7 +28,7 @@ social-bot-backend (Django + DRF) ──── PostgreSQL
 | `apps.tenants` | Tenant (business), membership, roles, invitations | exists |
 | `apps.channels` | Connect, list, edit and disconnect a business's channel accounts; the link from each `wanps-core` account to its business | exists |
 | `apps.conversations` (inbox) | List chats and read messages, one inbox per channel, built on `wanps.inbox`. Reply as a person, pause/resume the bot and live updates are planned | partly exists |
-| `apps.crm` (contacts + pipeline) | Contacts (clients), one per chat, created by themselves from the first message; the list, the file, editing and the pipeline stages exist (also from a chat of the inbox). Notes, tags, assignment, search and merging are planned | partly exists |
+| `apps.crm` (contacts + pipeline) | Contacts (clients), one per chat, created by themselves from the first message; the list, the file, editing, the pipeline stages (also from a chat of the inbox) and the internal notes exist. Tags, assignment, search and merging are planned | partly exists |
 | appointments (calendar) | Appointments linked to contacts | planned |
 | notifications | Notify users of new messages, appointments and pipeline changes | planned |
 
