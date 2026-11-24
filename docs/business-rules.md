@@ -33,7 +33,7 @@
 
 ## Special cases
 - WhatsApp Business API numbers cannot be used from the WhatsApp Business app, so every human reply must go through this system.
-- One contact can write from several channels; whether those become one contact or several is **undecided**.
+- One contact can write from several channels: each chat starts as its own contact, and a member merges two contacts into one file with all their chats (the contact that stays keeps its data and the other one is deleted). There is no undo.
 - Losing `WANPS_ENCRYPTION_KEY` makes stored tokens unreadable; they must be entered again.
 - On Messenger and Instagram, replying 24 hours to 7 days after the client's last message (`human_agent: true`) needs the "Human Agent" permission, approved in the Meta App Review. Without it Meta rejects the send and the API answers `502`. It is requested in Meta, not in code.
 
