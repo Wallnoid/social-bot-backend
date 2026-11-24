@@ -7,6 +7,7 @@ from django.urls import path
 from .views import (
     ContactDetailView,
     ContactListView,
+    ContactMergeView,
     ContactTagDetailView,
     ContactTagListView,
     NoteDetailView,
@@ -22,6 +23,7 @@ app_name = "crm"
 urlpatterns = [
     path("contacts/", ContactListView.as_view(), name="contact-list"),
     path("contacts/<uuid:contact_id>/", ContactDetailView.as_view(), name="contact-detail"),
+    path("contacts/<uuid:contact_id>/merge/", ContactMergeView.as_view(), name="contact-merge"),
     path("contacts/<uuid:contact_id>/notes/", NoteListView.as_view(), name="note-list"),
     path(
         "contacts/<uuid:contact_id>/notes/<uuid:note_id>/",

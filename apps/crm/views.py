@@ -16,11 +16,12 @@ from wanps.messaging.models import Message
 from apps.tenants.models import Membership
 from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
-from .models import Contact, Note, Stage, Tag
+from .models import Contact, Note, Stage, Tag, merge_contacts
 from .serializers import (
     NOBODY,
     ContactEditSerializer,
     ContactFileSerializer,
+    ContactMergeSerializer,
     ContactSerializer,
     ContactsQuerySerializer,
     NoteSerializer,
@@ -156,7 +157,26 @@ class ContactListView(generics.GenericAPIView):
         return Response({"success": True, "data": data})
 
 
-class ContactDetailView(generics.GenericAPIView):
+class ContactFileMixin:
+    """The file of a contact of the active business, shared by the views that answer with it."""
+
+    def file_of(self, contact_id):
+        contact = (
+            contacts_of(self.request.tenant)
+            .select_related("account__channel_account")
+            .annotate(
+                first_contact_at=Subquery(chat_of_contact().order_by("id").values("created_at")[:1])
+            )
+            # A contact whose account lost its link to the business cannot say where it writes
+            .filter(pk=contact_id, account__channel_account__isnull=False)
+            .first()
+        )
+        if contact is None:
+            raise NotFound("Contact not found.")
+        return contact
+
+
+class ContactDetailView(ContactFileMixin, generics.GenericAPIView):
     """GET /api/v1/crm/contacts/<id>/ → the file of a contact of the active business."""
 
     permission_classes = [IsAuthenticated, HasActiveTenant]
@@ -192,20 +212,48 @@ class ContactDetailView(generics.GenericAPIView):
         contact = edit.save()
         return Response({"success": True, "data": ContactFileSerializer(contact).data})
 
-    def file_of(self, contact_id):
-        contact = (
-            contacts_of(self.request.tenant)
-            .select_related("account__channel_account")
-            .annotate(
-                first_contact_at=Subquery(chat_of_contact().order_by("id").values("created_at")[:1])
+
+class ContactMergeView(ContactFileMixin, generics.GenericAPIView):
+    """POST /api/v1/crm/contacts/<id>/merge/ → merge another contact into this one."""
+
+    permission_classes = [IsAuthenticated, HasActiveTenant]
+    serializer_class = ContactFileSerializer
+
+    @extend_schema(
+        request=ContactMergeSerializer,
+        responses={
+            200: inline_serializer(
+                "ContactMergeResponse",
+                {"success": serializers.BooleanField(), "data": ContactFileSerializer()},
             )
-            # A contact whose account lost its link to the business cannot say where it writes
-            .filter(pk=contact_id, account__channel_account__isnull=False)
-            .first()
+        },
+    )
+    def post(self, request, contact_id):
+        body = ContactMergeSerializer(
+            data=request.data, context={"request": request, "kept_id": contact_id}
         )
-        if contact is None:
-            raise NotFound("Contact not found.")
-        return contact
+        body.is_valid(raise_exception=True)
+        # Answering needs the file: a contact that cannot give it is refused before anything merges
+        self.file_of(contact_id)
+        with transaction.atomic():
+            # Locked in a fixed order, so two merges of the same contacts do not wait for each
+            # other, and read again: the contact may have been merged since the body was checked
+            wanted = [contact_id, body.validated_data["contact"].pk]
+            locked = {
+                contact.pk: contact
+                for contact in Contact.objects.select_for_update(of=("self",))
+                .select_related("assigned_to")
+                .filter(tenant=request.tenant, pk__in=wanted)
+                .order_by("pk")
+            }
+            if wanted[0] not in locked:
+                raise NotFound("Contact not found.")
+            if wanted[1] not in locked:
+                raise ValidationError({"contact": ["This contact does not exist."]})
+            merge_contacts(locked[wanted[0]], locked[wanted[1]])
+        return Response(
+            {"success": True, "data": ContactFileSerializer(self.file_of(contact_id)).data}
+        )
 
 
 class StageListView(generics.GenericAPIView):

@@ -117,6 +117,26 @@ class ContactSerializer(serializers.Serializer):
         return display_name(contact.account.channel, contact.name or contact.channel_name)
 
 
+@extend_schema_field(serializers.UUIDField())
+class ContactOfBusinessField(serializers.PrimaryKeyRelatedField):
+    """A contact of the active business: one of another business is as one that does not exist."""
+
+    def get_queryset(self):
+        return Contact.objects.filter(tenant=self.context["request"].tenant)
+
+
+class ContactMergeSerializer(serializers.Serializer):
+    contact = ContactOfBusinessField(
+        help_text="The contact that goes into the one of the URL: it is deleted, and its chats, "
+        "notes and tags pass to the other."
+    )
+
+    def validate_contact(self, value):
+        if value.pk == self.context["kept_id"]:
+            raise serializers.ValidationError("A contact cannot be merged into itself.")
+        return value
+
+
 class StageOfBusinessField(serializers.PrimaryKeyRelatedField):
     """A stage of the active business: one of another business is as one that does not exist."""
 
@@ -183,7 +203,7 @@ class ContactFileSerializer(ContactSerializer):
         read_only=True, help_text="When the first message of the chat was saved."
     )
     conversations = serializers.SerializerMethodField(
-        help_text="The chats of the contact (one for now). Their messages are read in the inbox."
+        help_text="The chats of the contact, its own first. Their messages are read in the inbox."
     )
 
     @extend_schema_field(InboxAccountSerializer())
@@ -193,24 +213,33 @@ class ContactFileSerializer(ContactSerializer):
 
     @extend_schema_field(ContactConversationSerializer(many=True))
     def get_conversations(self, contact):
+        # Its own chat first, then the ones of the contacts merged into it
+        merged = (
+            Contact.all_objects.filter(merged_into=contact)
+            .select_related("account__channel_account")
+            .order_by("created_at", "id")
+        )
+        conversations = [self.conversation_of(chat) for chat in [contact, *merged]]
+        return ContactConversationSerializer(conversations, many=True).data
+
+    def conversation_of(self, chat):
         last = (
             # The chat the inbox opens: the account, its channel and the client
             Message.objects.filter(
-                account_id=contact.account_id,
-                channel=contact.account.channel,
-                contact_id=contact.external_id,
+                account_id=chat.account_id,
+                channel=chat.account.channel,
+                contact_id=chat.external_id,
             )
             .order_by("-id")
             .first()
         )
-        conversation = {
-            "account": self.get_account(contact),
-            "channel": contact.account.channel,
-            "contact_id": contact.external_id,
-            "connected": not contact.account.channel_account.is_deleted,
+        return {
+            "account": self.get_account(chat),
+            "channel": chat.account.channel,
+            "contact_id": chat.external_id,
+            "connected": not chat.account.channel_account.is_deleted,
             "last_message": serialize_message(last) if last else None,
         }
-        return ContactConversationSerializer([conversation], many=True).data
 
 
 class PageQuerySerializer(serializers.Serializer):

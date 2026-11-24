@@ -108,12 +108,15 @@ def chat_scope(request, channel, account_id):
 
 def contact_of_chat(tenant, account_id, contact_id):
     """The contact of the CRM of a chat, with its stage, or None if it has none."""
+    # Also a deleted one: if it was merged, its chat belongs to the contact that absorbed it
     contact = (
-        Contact.objects.select_related("stage")
+        Contact.all_objects.select_related("stage", "merged_into__stage")
         .filter(tenant=tenant, account_id=account_id, external_id=contact_id)
         .first()
     )
-    if contact is None:
+    if contact is not None and contact.is_deleted and contact.merged_into_id is not None:
+        contact = contact.merged_into
+    if contact is None or contact.is_deleted:
         return None
     return {"id": contact.pk, "stage": {"id": contact.stage_id, "name": contact.stage.name}}
 

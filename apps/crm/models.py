@@ -93,6 +93,11 @@ class Contact(BaseModel):
         on_delete=models.SET_NULL,
         related_name="contacts_in_charge",
     )
+    # Set when another contact absorbed this one (see `merge_contacts`): the row stays, deleted,
+    # so its chat keeps finding the contact that has it now
+    merged_into = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="merged_contacts"
+    )
     # Written by the team; the name the channel gives is read from the chat, never saved here
     name = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=32, blank=True)
@@ -122,3 +127,27 @@ class Note(BaseModel):
 
     def __str__(self):
         return self.text[:50]
+
+
+def merge_contacts(kept, absorbed):
+    """
+    Make `absorbed` part of `kept`: its notes, tags and chats pass to `kept`, which fills what it
+    has empty with the data of `absorbed`, and `absorbed` is deleted pointing to `kept`.
+    """
+    for field in ("name", "phone", "email", "company"):
+        if not getattr(kept, field):
+            setattr(kept, field, getattr(absorbed, field))
+    # A member who left the business is no longer in charge. The stage is not touched: the one of
+    # `kept` stays, so this needs neither `lock_stages_of` nor `stage_was_deleted`
+    if kept.assigned_to_id is None or kept.assigned_to.is_deleted:
+        absorbed_in_charge = absorbed.assigned_to
+        if absorbed_in_charge is not None and not absorbed_in_charge.is_deleted:
+            kept.assigned_to = absorbed_in_charge
+    kept.save(update_fields=["name", "phone", "email", "company", "assigned_to", "updated_at"])
+    Note.all_objects.filter(contact=absorbed).update(contact=kept)
+    kept.tags.add(*absorbed.tags.all())
+    # The contacts absorbed before now belong to `kept`, so a chat is always one step away
+    Contact.all_objects.filter(merged_into=absorbed).update(merged_into=kept)
+    absorbed.merged_into = kept
+    absorbed.save(update_fields=["merged_into", "updated_at"])
+    absorbed.soft_delete()
