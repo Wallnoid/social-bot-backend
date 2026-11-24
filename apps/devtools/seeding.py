@@ -13,7 +13,7 @@ from django.db.models import Q
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
-from apps.crm.models import Contact, Stage, first_stages
+from apps.crm.models import Contact, Note, Stage, Tag, first_stages, merge_contacts
 from apps.tenants.models import Membership, Tenant
 
 User = get_user_model()
@@ -360,6 +360,60 @@ def many_chats(builder, account, total=150):
         )
 
 
+# Where the contacts of the first business are, by turns, so every column of the pipeline has some
+STAGE_PATTERN = [
+    "Nuevo",
+    "Nuevo",
+    "Nuevo",
+    "En conversación",
+    "En conversación",
+    "Interesado",
+    "Cliente",
+    "Perdido",
+]
+COMPANIES = ["Clínica Norte", "Ferretería Lara", "", "Restaurante El Sol"]
+TAGS = ["VIP", "Mayorista", "Seguimiento"]
+NOTES = ["Prefiere que le escriban por la tarde.", "Pidió una cotización; llamar el lunes."]
+
+
+def seed_crm(acme):
+    """
+    Give the contacts of the first business what the CRM screens show: a stage, data, tags, notes
+    and a person in charge, and one person who wrote from two channels, merged into one contact.
+    """
+    stages = {stage.name: stage for stage in Stage.objects.filter(tenant=acme)}
+    members = list(
+        Membership.objects.filter(tenant=acme).select_related("user").order_by("user__email")
+    )
+    tags = [Tag.objects.create(tenant=acme, name=name) for name in TAGS]
+    contacts = list(
+        Contact.objects.filter(tenant=acme).select_related("account").order_by("external_id")
+    )
+    for index, contact in enumerate(contacts):
+        contact.stage = stages[STAGE_PATTERN[index % len(STAGE_PATTERN)]]
+        if index % 3 != 2:
+            contact.phone = f"+593 99 {index:06d}"
+            contact.email = f"cliente{index}@example.test"
+            contact.company = COMPANIES[index % len(COMPANIES)]
+        # Some have nobody in charge
+        if index % 5 < len(members):
+            contact.assigned_to = members[index % 5]
+    Contact.objects.bulk_update(contacts, ["stage", "phone", "email", "company", "assigned_to"])
+    for index, contact in enumerate(contacts):
+        for step, tag in ((4, tags[0]), (5, tags[1]), (6, tags[2])):
+            if index % step == 0:
+                contact.tags.add(tag)
+        if index % 10 == 0:
+            for text in NOTES:
+                Note.objects.create(
+                    contact=contact, author=members[index % len(members)].user, text=text
+                )
+    merge_contacts(
+        next(c for c in contacts if c.account.channel == "whatsapp"),
+        next(c for c in contacts if c.account.channel == "messenger"),
+    )
+
+
 def demo_tenants():
     return Tenant.all_objects.filter(name__in=DEMO_TENANTS)
 
@@ -374,7 +428,9 @@ def reset_demo():
     Message.objects.filter(account__in=accounts).delete()
     # Also the contacts of a demo business on an account the seeding did not create: they keep
     # its stages and the business from being deleted
+    # Their notes and tags go with them; the tags of the business are deleted before it
     Contact.all_objects.filter(Q(account__in=accounts) | Q(tenant__in=demo_tenants())).delete()
+    Tag.all_objects.filter(tenant__in=demo_tenants()).delete()
     Conversation.objects.filter(account__in=accounts).delete()
     # Also the links of a demo business to an account the seeding did not create (the account
     # and its messages stay): they keep the business from being deleted

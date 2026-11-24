@@ -48,6 +48,7 @@ class Command(BaseCommand):
                 acme, rival = seeding.seed_businesses_and_users(password)
                 accounts = seeding.seed_accounts(acme, rival)
                 seeding.seed_conversations(accounts, timezone.now())
+                seeding.seed_crm(acme)
             if member:
                 seeding.add_admin(member)
         self.stdout.write(seeding.summary())

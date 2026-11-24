@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 from wanps.messaging.models import Account, App, Conversation, Message
 
 from apps.channels.models import ChannelAccount
-from apps.crm.models import Contact
+from apps.crm.models import Contact, Note, Tag
 from apps.devtools import fake_meta, seeding
 from apps.tenants.models import Membership, Tenant
 
@@ -392,9 +392,11 @@ def test_every_seeded_chat_has_its_contact(seed):
         .values_list("account_id", "contact_id")
         .distinct()
     )
-    contacts = set(Contact.objects.values_list("account_id", "external_id"))
+    # A chat merged into another contact keeps its own row, deleted and pointing to that contact
+    contacts = set(Contact.all_objects.values_list("account_id", "external_id"))
     assert chats
     assert contacts == chats
+    assert not Contact.all_objects.filter(is_deleted=True, merged_into__isnull=True).exists()
 
 
 def test_reset_deletes_the_seeded_contacts_and_keeps_the_real_ones(seed):
@@ -443,3 +445,55 @@ def test_reset_also_deletes_the_contacts_of_a_demo_business_on_an_account_that_i
     seed("--reset")
 
     assert not Contact.all_objects.filter(account=account).exists()
+
+
+def test_the_first_business_has_contacts_in_every_stage_with_tags_notes_and_people_in_charge(
+    seed,
+):
+    seed()
+    acme = Tenant.objects.get(name=seeding.ACME)
+    contacts = Contact.objects.filter(tenant=acme)
+
+    assert set(contacts.values_list("stage__name", flat=True)) == {
+        "Nuevo",
+        "En conversación",
+        "Interesado",
+        "Cliente",
+        "Perdido",
+    }
+    assert set(Tag.objects.filter(tenant=acme).values_list("name", flat=True)) == {
+        "VIP",
+        "Mayorista",
+        "Seguimiento",
+    }
+    assert contacts.filter(tags__isnull=False).exists()
+    assert Note.objects.filter(contact__tenant=acme).exists()
+    assert contacts.filter(assigned_to__isnull=False).exists()
+    assert contacts.filter(assigned_to__isnull=True).exists()
+    assert contacts.exclude(phone="").exists()
+    # The other business is left as a new one
+    assert not Tag.objects.filter(tenant__name=seeding.RIVAL).exists()
+    assert set(
+        Contact.objects.filter(tenant__name=seeding.RIVAL).values_list("stage__name", flat=True)
+    ) == {"Nuevo"}
+
+
+def test_one_seeded_contact_is_two_chats_merged_into_one_file(seed, password):
+    seed()
+    acme = Tenant.objects.get(name=seeding.ACME)
+    kept = Contact.objects.get(merged_contacts__isnull=False)
+    api = api_for(seeding.demo_email("admin"), password, acme)
+
+    response = api.get(f"/api/v1/crm/contacts/{kept.pk}/")
+
+    assert response.status_code == 200
+    channels = [chat["channel"] for chat in response.data["data"]["conversations"]]
+    assert sorted(channels) == ["messenger", "whatsapp"]
+
+
+def test_reset_creates_the_tags_and_notes_again_without_duplicating_them(seed):
+    seed()
+    seed("--reset")
+
+    assert Tag.objects.filter(tenant__name=seeding.ACME).count() == 3
+    assert Tag.all_objects.filter(tenant__name=seeding.ACME).count() == 3
