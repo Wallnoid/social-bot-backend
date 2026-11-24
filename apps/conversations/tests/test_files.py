@@ -149,6 +149,11 @@ def test_opening_a_file_downloads_it_from_meta_saves_it_and_returns_the_bytes(
     assert meta.call_count == 2
 
 
+def body_of(response):
+    """The bytes of an answer that is streamed (a saved file)."""
+    return b"".join(response.streaming_content)
+
+
 def test_opening_it_again_serves_the_saved_file_without_calling_meta(admin, tenant, meta_app):
     link = add_account(tenant, meta_app, "111")
     message = add_file_message(link, whatsapp_file("image", mime_type="image/jpeg"))
@@ -158,7 +163,11 @@ def test_opening_it_again_serves_the_saved_file_without_calling_meta(admin, tena
     with patch("requests.get") as meta:
         again = open_file(admin, link, message)
 
-    assert (again.status_code, again.content, again["Content-Type"]) == (200, b"JPEG", "image/jpeg")
+    assert (again.status_code, body_of(again), again["Content-Type"]) == (
+        200,
+        b"JPEG",
+        "image/jpeg",
+    )
     meta.assert_not_called()
 
 
@@ -460,3 +469,40 @@ def test_the_tests_never_reach_the_redis_of_a_developer():
 
     assert caches["ws_tickets"].__class__.__name__ == "LocMemCache"
     assert get_channel_layer().__class__.__name__ == "InMemoryChannelLayer"
+
+
+def test_a_saved_file_is_streamed_with_its_bytes_type_and_size(admin, tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+    message = add_file_message(link, whatsapp_file("image", mime_type="image/jpeg"))
+    with patch("requests.get", side_effect=meta_gives(b"JPEG-BYTES")):
+        first = open_file(admin, link, message)
+
+    again = open_file(admin, link, message)
+
+    assert not first.streaming
+    assert again.streaming
+    assert body_of(again) == b"JPEG-BYTES"
+    assert again["Content-Type"] == "image/jpeg"
+    assert again["Content-Length"] == str(len(b"JPEG-BYTES"))
+
+
+def test_a_saved_file_keeps_the_headers_of_the_first_opening(admin, tenant, meta_app):
+    link = add_account(tenant, meta_app, "111")
+    page = add_file_message(
+        link,
+        whatsapp_file("document", mime_type="text/html", filename="page.html"),
+        message_type="document",
+    )
+    picture = add_file_message(link, whatsapp_file("image", mime_type="image/jpeg"))
+    with patch("requests.get", side_effect=meta_gives(b"<script>x()</script>", "text/html")):
+        open_file(admin, link, page)
+    with patch("requests.get", side_effect=meta_gives(b"JPEG", "image/jpeg")):
+        open_file(admin, link, picture)
+
+    document = open_file(admin, link, page)
+    image = open_file(admin, link, picture)
+
+    assert document["Content-Disposition"] == 'attachment; filename="page.html"'
+    # A picture is shown in the page, and the name of the file on the server is not given away
+    assert "Content-Disposition" not in image
+    assert document["X-Content-Type-Options"] == image["X-Content-Type-Options"] == "nosniff"

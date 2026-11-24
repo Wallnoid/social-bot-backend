@@ -8,7 +8,7 @@ import logging
 import requests
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
-from django.http import Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 from drf_spectacular.types import OpenApiTypes
@@ -39,7 +39,7 @@ from apps.channels.signals import client_block_changed, client_limit_changed
 from apps.crm.models import Contact
 from apps.tenants.permissions import HasActiveTenant, IsSupervisorOrAdmin
 
-from .files import open_message_file
+from .files import open_message_file, open_saved_file
 from .names import account_of, display_name
 from .realtime import issue_ticket
 from .serializers import (
@@ -312,8 +312,17 @@ class MessageFileView(APIView):
         attachment = get_attachment(message) if message else None
         if attachment is None:
             raise Http404
-        content, mime_type = open_message_file(message)
-        response = HttpResponse(content, content_type=mime_type)
+        saved = open_saved_file(message)
+        if saved is not None:
+            # Sent in parts, never read whole; the response closes the file when it ends
+            stored, mime_type = saved
+            response = FileResponse(stored, content_type=mime_type)
+            # The name it sets is the one of the file on the server
+            if response.has_header("Content-Disposition"):
+                del response["Content-Disposition"]
+        else:
+            content, mime_type = open_message_file(message)
+            response = HttpResponse(content, content_type=mime_type)
         # The type comes from the client's side of Meta, so the browser must not guess another
         # one, and anything that is not a picture, a sound or a video is downloaded, not opened
         response["X-Content-Type-Options"] = "nosniff"

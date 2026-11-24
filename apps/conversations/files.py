@@ -41,13 +41,20 @@ class FileNotReached(APIException):
     default_code = "file_not_reached"
 
 
-def open_message_file(message):
-    """The content and MIME type of the file of a message that carries one."""
+def open_saved_file(message):
+    """
+    The open file and MIME type of the saved file of a message, or None if it is not saved.
+    The file is not read: whoever answers with it closes it (a streamed response does).
+    """
     saved = MessageFile.objects.filter(message=message).first()
     if saved is not None and default_storage.exists(saved.path):
-        with default_storage.open(saved.path) as stored:
-            return stored.read(), saved.mime_type
+        return default_storage.open(saved.path), saved.mime_type
+    return None
 
+
+def open_message_file(message):
+    """Ask Meta for the file of a message that is not saved: its content and MIME type."""
+    saved = MessageFile.objects.filter(message=message).first()
     try:
         downloaded = download_attachment(message)
     except AttachmentUnavailable as exc:
