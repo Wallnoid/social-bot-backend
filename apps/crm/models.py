@@ -84,6 +84,15 @@ class Contact(BaseModel):
     )
     stage = models.ForeignKey(Stage, on_delete=models.PROTECT, related_name="contacts")
     tags = models.ManyToManyField(Tag, blank=True, related_name="contacts")
+    # The member of the business who takes care of the client; the link is the membership, so
+    # a person who leaves the business stops being in charge (see `ContactSerializer`)
+    assigned_to = models.ForeignKey(
+        "tenants.Membership",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="contacts_in_charge",
+    )
     # Written by the team; the name the channel gives is read from the chat, never saved here
     name = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=32, blank=True)

@@ -7,6 +7,7 @@ from wanps.messaging.models import Message
 from apps.channels.serializers import CHANNEL_CHOICES
 from apps.conversations.names import account_of, display_name
 from apps.conversations.serializers import InboxAccountSerializer, InboxMessageSerializer
+from apps.tenants.models import Membership
 
 from .models import Contact, Note, Stage, Tag, stage_was_deleted
 
@@ -63,6 +64,11 @@ class StageDeleteQuerySerializer(serializers.Serializer):
     )
 
 
+class PersonInChargeSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True, help_text="The id of the member of the business.")
+    name = serializers.CharField(source="user.full_name", read_only=True)
+
+
 class ContactSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     name = serializers.SerializerMethodField(
@@ -85,6 +91,9 @@ class ContactSerializer(serializers.Serializer):
     )
     stage = ContactStageSerializer(read_only=True, help_text="The stage of the pipeline.")
     tags = TagSerializer(many=True, read_only=True, help_text="The tags of the contact, by name.")
+    assigned_to = serializers.SerializerMethodField(
+        help_text="The member in charge of the contact, empty if nobody."
+    )
     phone = serializers.CharField(read_only=True)
     email = serializers.EmailField(read_only=True)
     company = serializers.CharField(read_only=True)
@@ -92,6 +101,14 @@ class ContactSerializer(serializers.Serializer):
         read_only=True,
         help_text="When the latest message of the chat, from either side, was saved.",
     )
+
+    @extend_schema_field(PersonInChargeSerializer(allow_null=True))
+    def get_assigned_to(self, contact):
+        member = contact.assigned_to
+        # A member who left the business is no longer in charge
+        if member is None or member.is_deleted:
+            return None
+        return PersonInChargeSerializer(member).data
 
     @extend_schema_field(serializers.CharField())
     def get_name(self, contact):
@@ -106,8 +123,23 @@ class StageOfBusinessField(serializers.PrimaryKeyRelatedField):
         return Stage.objects.filter(tenant=self.context["request"].tenant)
 
 
+class MemberOfBusinessField(serializers.PrimaryKeyRelatedField):
+    """A member of the active business: one of another business is as one that does not exist."""
+
+    def get_queryset(self):
+        return Membership.objects.select_related("user").filter(
+            tenant=self.context["request"].tenant
+        )
+
+
 class ContactEditSerializer(serializers.ModelSerializer):
     stage = StageOfBusinessField(required=False, help_text="Moves the contact to this stage.")
+    assigned_to = MemberOfBusinessField(
+        required=False,
+        allow_null=True,
+        help_text="The member in charge of the contact (`id` in the list of members); empty "
+        "takes the person off.",
+    )
     # Free text, not E.164: digits, "+", spaces and dashes, with at least one digit
     phone = serializers.RegexField(
         r"^([0-9+\- ]*[0-9][0-9+\- ]*)?$", max_length=32, required=False, allow_blank=True
@@ -115,7 +147,7 @@ class ContactEditSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contact
-        fields = ["name", "phone", "email", "company", "stage"]
+        fields = ["name", "phone", "email", "company", "stage", "assigned_to"]
 
     def validate_email(self, email):
         # Stored in lowercase, as the emails of users

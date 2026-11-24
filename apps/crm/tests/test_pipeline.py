@@ -103,12 +103,15 @@ def test_a_new_contact_starts_in_nuevo(tenant, meta_app, member):
 
 @pytest.mark.django_db(transaction=True)
 def test_businesses_and_contacts_that_existed_before_get_the_stages_and_start_in_nuevo():
-    # The database as it was before the pipeline: contacts had no stage
-    migrate_to(("crm", "0005_contact_stage"))
     tenant = Tenant.objects.create(name="Acme Dental")
-    Stage.objects.all().delete()
     meta_app = App.objects.create(name="Social Bot", app_secret="secret", verify_token="verify")
     add_message(add_account(tenant, meta_app, "111"), "593990000001", "Hola", contact_name="Ana")
+    # The database as it was before the pipeline: contacts had no stage and businesses had none.
+    # It is set up through the models of that point of the history, because the current ones
+    # ask for columns that did not exist yet.
+    before = migrate_to(("crm", "0005_contact_stage"))
+    before.get_model("crm", "Contact")._base_manager.all().update(stage=None)
+    before.get_model("crm", "Stage")._base_manager.all().delete()
 
     migrate_to()
 

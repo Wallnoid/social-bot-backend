@@ -50,7 +50,7 @@ def contacts_of(tenant):
     chat = chat_of_contact()
     return (
         Contact.objects.filter(tenant=tenant)
-        .select_related("account", "stage")
+        .select_related("account", "stage", "assigned_to__user")
         .prefetch_related("tags")
         .annotate(
             channel_name=Subquery(
