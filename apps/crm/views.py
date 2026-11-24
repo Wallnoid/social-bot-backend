@@ -18,6 +18,7 @@ from apps.tenants.permissions import HasActiveTenant, IsTenantAdmin
 
 from .models import Contact, Note, Stage, Tag
 from .serializers import (
+    NOBODY,
     ContactEditSerializer,
     ContactFileSerializer,
     ContactSerializer,
@@ -116,12 +117,35 @@ class ContactListView(generics.GenericAPIView):
         },
     )
     def get(self, request):
-        query = ContactsQuerySerializer(data=request.query_params)
+        query = ContactsQuerySerializer(data=request.query_params, context={"request": request})
         query.is_valid(raise_exception=True)
-        limit, offset = query.validated_data["limit"], query.validated_data["offset"]
+        filters = query.validated_data
+        limit, offset = filters["limit"], filters["offset"]
         contacts = contacts_of(request.tenant)
-        if "stage" in query.validated_data:
-            contacts = contacts.filter(stage_id=query.validated_data["stage"])
+        if "stage" in filters:
+            contacts = contacts.filter(stage_id=filters["stage"])
+        if filters.get("search"):
+            text = filters["search"]
+            contacts = contacts.filter(
+                # The name the team sees: the one the team wrote, else the channel's. On WhatsApp
+                # the phone is the id of the client on the channel.
+                Q(name__icontains=text)
+                | Q(name="", channel_name__icontains=text)
+                | Q(phone__icontains=text)
+                | Q(account__channel="whatsapp", external_id__icontains=text)
+            )
+        # One filter for each tag, so a contact needs all of them
+        for tag_id in filters.get("tag", ()):
+            contacts = contacts.filter(tags=tag_id)
+        if filters.get("assigned_to") == NOBODY:
+            # A member who left the business is no longer in charge
+            contacts = contacts.filter(
+                Q(assigned_to__isnull=True) | Q(assigned_to__is_deleted=True)
+            )
+        elif "assigned_to" in filters:
+            contacts = contacts.filter(
+                assigned_to_id=filters["assigned_to"], assigned_to__is_deleted=False
+            )
         # The id breaks the ties, so a page never repeats or skips a contact
         contacts = contacts.order_by(F("last_contact_at").desc(nulls_last=True), "id")
         page = list(contacts[offset : offset + limit + 1])

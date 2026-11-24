@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -217,10 +218,55 @@ class PageQuerySerializer(serializers.Serializer):
     offset = serializers.IntegerField(min_value=0, default=0)
 
 
+NOBODY = "none"
+
+
 class ContactsQuerySerializer(PageQuerySerializer):
+    """The filters of the contact list; the ones that name something check it is of the business."""
+
     stage = serializers.UUIDField(
         required=False, help_text="Only the contacts of this stage: a column of the pipeline."
     )
+    search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=100,
+        help_text="Part of the name the team wrote or the channel gave, or of the phone, "
+        "whatever the capitalization.",
+    )
+    tag = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        help_text="Only the contacts that have every one of these tags (repeat the parameter).",
+    )
+    assigned_to = serializers.CharField(
+        required=False,
+        help_text=f"Only the contacts this member is in charge of, or `{NOBODY}` for nobody.",
+    )
+
+    def validate_stage(self, value):
+        if not Stage.objects.filter(pk=value, tenant=self.context["request"].tenant).exists():
+            raise serializers.ValidationError("This stage does not exist.")
+        return value
+
+    def validate_tag(self, value):
+        wanted = set(value)
+        tenant = self.context["request"].tenant
+        if Tag.objects.filter(pk__in=wanted, tenant=tenant).count() != len(wanted):
+            raise serializers.ValidationError("A tag does not exist.")
+        return wanted
+
+    def validate_assigned_to(self, value):
+        if value == NOBODY:
+            return value
+        tenant = self.context["request"].tenant
+        try:
+            exists = Membership.objects.filter(pk=value, tenant=tenant).exists()
+        except (ValueError, DjangoValidationError):
+            exists = False
+        if not exists:
+            raise serializers.ValidationError("This member does not exist.")
+        return value
 
 
 class NoteAuthorSerializer(serializers.Serializer):
