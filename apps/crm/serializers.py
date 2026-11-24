@@ -261,7 +261,7 @@ class ContactsQuerySerializer(PageQuerySerializer):
         allow_blank=True,
         max_length=100,
         help_text="Part of the name the team wrote or the channel gave, or of the phone, "
-        "whatever the capitalization.",
+        "whatever the capitalization. Also looks at the contacts merged into each one.",
     )
     tag = serializers.ListField(
         child=serializers.UUIDField(),

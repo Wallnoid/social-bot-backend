@@ -3,8 +3,8 @@ Views for the crm app.
 """
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, OuterRef, Q, Subquery, Value
-from django.db.models.functions import Lower
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Greatest, Lower
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
@@ -45,22 +45,63 @@ def chat_of_contact():
     )
 
 
-def contacts_of(tenant):
-    """The contacts of a business, with the name and the last contact their chat gives."""
+def channel_name_of_chat():
+    """The name the channel gives to the client of the chat of the contact of the outer query."""
     # The latest message of a chat is the one with the highest id, as the inbox takes it, so
     # both show the same name
-    chat = chat_of_contact()
+    return Subquery(
+        chat_of_contact()
+        .filter(direction=Message.DIRECTION_IN)
+        .order_by("-id")
+        .values("contact_name")[:1]
+    )
+
+
+def last_message_of_merged_chats():
+    """When the latest message of the chats merged into the contact of the outer query was saved."""
+    # The merged contacts first (almost always none), then the chat of each, as the contact's own
+    return Subquery(
+        Contact.all_objects.filter(merged_into=OuterRef("pk"))
+        .annotate(last=Subquery(chat_of_contact().order_by("-id").values("created_at")[:1]))
+        .order_by(F("last").desc(nulls_last=True))
+        .values("last")[:1]
+    )
+
+
+def search_matches(text):
+    """The contacts whose name or phone has `text`, whatever the capitalization."""
+    return (
+        # The name the team sees: the one the team wrote, else the channel's. On WhatsApp the
+        # phone is the id of the client on the channel. A merged contact is searched with the
+        # same rules (see `contacts_matching`), so its old name and phone still find the contact.
+        Q(name__icontains=text)
+        | Q(name="", channel_name__icontains=text)
+        | Q(phone__icontains=text)
+        | Q(account__channel="whatsapp", external_id__icontains=text)
+    )
+
+
+def contacts_matching(text):
+    """The contacts that match `text` by themselves or by a contact merged into them."""
+    merged = Contact.all_objects.annotate(channel_name=channel_name_of_chat()).filter(
+        search_matches(text), merged_into=OuterRef("pk"), tenant=OuterRef("tenant")
+    )
+    return search_matches(text) | Q(Exists(merged))
+
+
+def contacts_of(tenant):
+    """The contacts of a business, with the name their chat gives and the last contact of all."""
     return (
         Contact.objects.filter(tenant=tenant)
         .select_related("account", "stage", "assigned_to__user")
         .prefetch_related("tags")
         .annotate(
-            channel_name=Subquery(
-                chat.filter(direction=Message.DIRECTION_IN)
-                .order_by("-id")
-                .values("contact_name")[:1]
+            channel_name=channel_name_of_chat(),
+            # The latest message of the chat of the contact and of the chats merged into it
+            last_contact_at=Greatest(
+                Subquery(chat_of_contact().order_by("-id").values("created_at")[:1]),
+                last_message_of_merged_chats(),
             ),
-            last_contact_at=Subquery(chat.order_by("-id").values("created_at")[:1]),
         )
     )
 
@@ -127,14 +168,7 @@ class ContactListView(generics.GenericAPIView):
             contacts = contacts.filter(stage_id=filters["stage"])
         if filters.get("search"):
             text = filters["search"]
-            contacts = contacts.filter(
-                # The name the team sees: the one the team wrote, else the channel's. On WhatsApp
-                # the phone is the id of the client on the channel.
-                Q(name__icontains=text)
-                | Q(name="", channel_name__icontains=text)
-                | Q(phone__icontains=text)
-                | Q(account__channel="whatsapp", external_id__icontains=text)
-            )
+            contacts = contacts.filter(contacts_matching(text))
         # One filter for each tag, so a contact needs all of them
         for tag_id in filters.get("tag", ()):
             contacts = contacts.filter(tags=tag_id)
